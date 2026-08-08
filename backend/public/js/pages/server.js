@@ -169,6 +169,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       btnRestart.removeAttribute('disabled');
       commandInput.removeAttribute('disabled');
       btnSendCommand.removeAttribute('disabled');
+      DOM.get('starting-progress-container').classList.remove('active');
     } else if (currentStatus === 'STARTING') {
       badge.classList.add('starting');
       btnStart.setAttribute('disabled', 'true');
@@ -176,6 +177,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       btnRestart.removeAttribute('disabled');
       commandInput.setAttribute('disabled', 'true');
       btnSendCommand.setAttribute('disabled', 'true');
+      DOM.get('starting-progress-container').classList.add('active');
     } else {
       badge.classList.add('offline');
       btnStart.removeAttribute('disabled');
@@ -183,6 +185,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       btnRestart.setAttribute('disabled', 'true');
       commandInput.setAttribute('disabled', 'true');
       btnSendCommand.setAttribute('disabled', 'true');
+      DOM.get('starting-progress-container').classList.remove('active');
     }
     
     text.textContent = currentStatus;

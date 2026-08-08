@@ -71,6 +71,17 @@
 
     <!-- Vista: Panel de Servidor -->
     <div id="view-server" class="tab-content active">
+      
+      <!-- Progress Bar (Visible only when STARTING) -->
+      <div id="starting-progress-container" class="starting-progress-container">
+        <div class="starting-progress-text">
+          <i data-lucide="loader-2" class="spin-icon"></i>
+          Preparando entorno...
+        </div>
+        <div class="starting-progress-subtext" id="starting-progress-subtext">Restaurando archivos de guardado o plantillas desde Cloudflare R2</div>
+        <div class="starting-progress-bar"></div>
+      </div>
+
       <div class="cards-grid">
         <!-- Acciones -->
         <div class="card">

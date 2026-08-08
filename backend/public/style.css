@@ -980,3 +980,60 @@ input:checked + .toggle-slider:before {
   font-family: 'Fira Code', Consolas, monospace;
 }
 
+/* Barra de progreso de inicio */
+.starting-progress-container {
+  display: none; /* Oculto por defecto */
+  margin-top: 15px;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  padding: 15px;
+  text-align: center;
+}
+
+.starting-progress-container.active {
+  display: block;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.starting-progress-bar {
+  height: 8px;
+  width: 100%;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-top: 10px;
+  position: relative;
+}
+
+.starting-progress-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -50%;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, var(--color-blue), var(--color-accent), transparent);
+  animation: progress-slide 1.5s infinite linear;
+}
+
+.starting-progress-text {
+  font-size: 0.9rem;
+  color: var(--text-bright);
+  font-weight: 500;
+  margin-bottom: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.starting-progress-subtext {
+  font-size: 0.8rem;
+  color: var(--text-color);
+}
+
+@keyframes progress-slide {
+  0% { left: -50%; }
+  100% { left: 100%; }
+}

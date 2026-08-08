@@ -84,7 +84,35 @@ export class S3SyncService {
       log(`[S3SyncService] Successfully restored server from S3.`);
     } catch (error: any) {
       if (error.name === "NoSuchKey") {
-        log("[S3SyncService] No backup found in S3. This must be the first run.");
+        log("[S3SyncService] No backup found. Looking for template.zip instead...");
+        try {
+          const templateCommand = new GetObjectCommand({
+            Bucket: this.bucket,
+            Key: "template.zip"
+          });
+          const templateResponse = await this.client.send(templateCommand);
+          const templateByteArray = await templateResponse.Body?.transformToByteArray();
+          
+          if (templateByteArray) {
+            const tempZipPath = path.join(process.cwd(), "temp_download.zip");
+            await fs.writeFile(tempZipPath, templateByteArray);
+            
+            log(`[S3SyncService] Unzipping template.zip to ${targetDirectory}...`);
+            await fs.mkdir(targetDirectory, { recursive: true });
+            
+            const zip = new AdmZip(tempZipPath);
+            zip.extractAllTo(targetDirectory, true);
+            
+            await fs.unlink(tempZipPath);
+            log(`[S3SyncService] Successfully loaded template from S3!`);
+          }
+        } catch (templateError: any) {
+          if (templateError.name === "NoSuchKey") {
+            log("[S3SyncService] No template.zip found either. Starting from scratch (generating new world).");
+          } else {
+            log(`[S3SyncService] Error downloading template: ${templateError.message}`);
+          }
+        }
       } else {
         log(`[S3SyncService] Error downloading from S3: ${error.message}`);
         console.error(error);
