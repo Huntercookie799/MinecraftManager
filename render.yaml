@@ -14,4 +14,14 @@ services:
       - key: JAVA_MAX_MEMORY
         value: 1G
       - key: DATABASE_URL
-        value: # URL DE TU BASE DE DATOS MYSQL (Ej: mysql://user:pass@host:3306/db)
+        value: # URL DE TU BASE DE DATOS (Ej: mysql://user:pass@host:3306/db)
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CORS_ORIGIN
+        value: "*"
+      - key: HOST
+        value: "0.0.0.0"
+      - key: PORT
+        value: "3000"
+      # PUBLIC_IP es detectado automáticamente desde RENDER_EXTERNAL_HOSTNAME
+      # Solo necesitas definirlo manualmente si usas un dominio personalizado

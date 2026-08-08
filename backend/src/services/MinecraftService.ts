@@ -200,7 +200,7 @@ export class MinecraftService extends EventEmitter {
       startedAt: this.startedAt?.toISOString(),
       lastError: this.lastError,
       version: process.env.MINECRAFT_VERSION ? `Purpur ${process.env.MINECRAFT_VERSION}` : "Purpur 1.21.x",
-      ip: process.env.PUBLIC_IP || "localhost",
+      ip: process.env.RENDER_EXTERNAL_HOSTNAME || process.env.PUBLIC_IP || "localhost",
       memory: this.config.memory,
       port: this.config.port,
       worldTime: this.worldTime,
