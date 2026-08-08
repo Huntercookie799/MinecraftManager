@@ -25,29 +25,9 @@ async function getJson(url) {
 async function main() {
   await mkdir(serverDir, { recursive: true });
 
-  const buildsUrl = `https://api.papermc.io/v2/projects/paper/versions/${minecraftVersion}/builds`;
-  const builds = await getJson(buildsUrl);
-  const availableBuilds = builds.builds ?? [];
-
-  if (availableBuilds.length === 0) {
-    throw new Error(`No Paper builds found for Minecraft ${minecraftVersion}.`);
-  }
-
-  const build = requestedBuild === "latest"
-    ? availableBuilds.at(-1)
-    : availableBuilds.find((item) => String(item.build) === String(requestedBuild));
-
-  if (!build) {
-    throw new Error(`Paper build ${requestedBuild} was not found for Minecraft ${minecraftVersion}.`);
-  }
-
-  const downloadName = build.downloads?.application?.name;
-
-  if (!downloadName) {
-    throw new Error(`Paper build ${build.build} does not include an application jar.`);
-  }
-
-  const downloadUrl = `https://api.papermc.io/v2/projects/paper/versions/${minecraftVersion}/builds/${build.build}/downloads/${downloadName}`;
+  const downloadUrl = `https://api.purpurmc.org/v2/purpur/${minecraftVersion}/latest/download`;
+  console.log(`Downloading Purpur for Minecraft ${minecraftVersion}...`);
+  
   const response = await fetch(downloadUrl);
 
   if (!response.ok || !response.body) {
@@ -57,7 +37,7 @@ async function main() {
   await mkdir(path.dirname(targetJar), { recursive: true });
   await pipeline(response.body, fs.createWriteStream(targetJar));
 
-  console.log(`Downloaded ${downloadName} to ${targetJar}`);
+  console.log(`Downloaded successfully to ${targetJar}`);
 }
 
 main().catch((error) => {
