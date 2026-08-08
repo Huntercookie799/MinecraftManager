@@ -4,7 +4,10 @@ FROM node:22-bookworm-slim AS build
 
 WORKDIR /app/backend
 COPY backend/package*.json ./
+# Copiar prisma antes de instalar para que el postinstall genere el cliente
+COPY backend/prisma ./prisma
 RUN npm install
+RUN npx prisma generate
 
 COPY backend/tsconfig.json ./
 COPY backend/src ./src
@@ -35,7 +38,8 @@ RUN chmod +x ./scripts/start-render.sh
 
 WORKDIR /app/backend
 COPY backend/package*.json ./
-RUN npm install --omit=dev
+COPY backend/prisma ./prisma
+RUN npm install --omit=dev && npx --yes prisma generate
 
 COPY --from=build /app/backend/dist ./dist
 
