@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: minecraft-manager
+    env: docker
+    dockerfilePath: docker/controller.Dockerfile
+    dockerContext: .
+    plan: free # Puedes cambiar a starter si lo deseas
+    healthCheckPath: /health
+    disk:
+      name: minecraft-data
+      mountPath: /minecraft
+      sizeGB: 1
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JAVA_MIN_MEMORY
+        value: 512M
+      - key: JAVA_MAX_MEMORY
+        value: 1G
+      - key: DATABASE_URL
+        value: # URL DE TU BASE DE DATOS MYSQL (Ej: mysql://user:pass@host:3306/db)

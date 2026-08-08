@@ -1,0 +1,26 @@
+node_modules/
+dist/
+coverage/
+.env
+backend/.env
+npm-debug.log*
+
+# Minecraft runtime artifacts
+minecraft/server/*.jar
+minecraft/server/cache/
+minecraft/server/crash-reports/
+minecraft/server/libraries/
+minecraft/server/logs/
+minecraft/server/versions/
+minecraft/server/world/
+minecraft/server/world_*/
+minecraft/server/banned-ips.json
+minecraft/server/banned-players.json
+minecraft/server/usercache.json
+minecraft/server/whitelist.json
+minecraft/server/plugins/*
+!minecraft/server/plugins/.gitkeep
+minecraft/server/config/*
+!minecraft/server/config/.gitkeep
+minecraft/backups/*
+!minecraft/backups/.gitkeep

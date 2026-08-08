@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Minecraft Manager</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  
+  <!-- Pantalla de Login -->
+  <div id="login-screen" class="login-screen">
+    <div class="login-box">
+      <h2>Iniciar Sesión</h2>
+      <p>Panel de Administración</p>
+      <form id="login-form">
+        <input type="text" id="username" placeholder="Usuario" required autocomplete="username">
+        <input type="password" id="password" placeholder="Contraseña" required autocomplete="current-password">
+        <button type="submit" class="btn btn-blue" id="btn-login">Entrar</button>
+      </form>
+      <div id="login-error" class="login-error"></div>
+    </div>
+  </div>
+
+  <div id="app-container" style="display: none; width: 100%; height: 100%; display: flex;">
+    <div class="sidebar">
+      <div class="logo-area">
+        <h1>Minecraft<br/><span>Manager</span></h1>
+      </div>
+      <ul class="nav">
+        <li class="active"><a href="#">Servidor</a></li>
+        <li><a href="#">Opciones</a></li>
+        <li><a href="#">Consola</a></li>
+        <li><a href="#">Jugadores</a></li>
+      </ul>
+    </div>
+
+  <main class="content">
+    <header class="header">
+      <div class="server-title">
+        <h2>Mi Servidor Paper</h2>
+        <p>Servidor Vanilla (PaperMC)</p>
+      </div>
+      <div class="status-badge" id="status-badge">
+        <span class="dot"></span>
+        <span class="text" id="status-text">OFFLINE</span>
+      </div>
+    </header>
+
+    <div class="cards-grid">
+      <!-- Tarjeta de Controles -->
+      <section class="card controls-card">
+        <h3>Controles</h3>
+        <div class="button-group">
+          <button id="btn-start" class="btn btn-success">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg> Iniciar
+          </button>
+          <button id="btn-restart" class="btn btn-warning" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"></polyline><polyline points="23 20 23 14 17 14"></polyline><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"></path></svg> Reiniciar
+          </button>
+          <button id="btn-stop" class="btn btn-danger" disabled>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg> Detener
+          </button>
+        </div>
+      </section>
+
+      <!-- Tarjeta de Información -->
+      <section class="card info-card">
+        <h3>Software</h3>
+        <p><strong>Versión:</strong> Paper 1.21.x</p>
+        <p><strong>Memoria:</strong> 1GB</p>
+        <p><strong>IP:</strong> <span id="server-ip">Revisa los logs para la IP de Playit</span></p>
+      </section>
+    </div>
+
+    <!-- Tarjeta de Consola -->
+    <section class="card console-card">
+      <h3>Consola</h3>
+      <div class="terminal" id="terminal-output">
+        <!-- Logs aparecerán aquí -->
+      </div>
+      <div class="command-input">
+        <input type="text" id="command-input" placeholder="Escribe un comando..." autocomplete="off" disabled>
+        <button id="btn-send-command" disabled>Enviar</button>
+      </div>
+    </section>
+
+  </main>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

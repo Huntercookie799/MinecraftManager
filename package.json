@@ -1,0 +1,21 @@
+{
+  "name": "minecraft-manager",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Panel y backend para administrar un servidor Minecraft Paper.",
+  "workspaces": [
+    "backend"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w backend",
+    "build": "npm run build -w backend",
+    "start": "npm run start -w backend",
+    "test": "npm run test -w backend",
+    "minecraft:download": "node scripts/download-paper.mjs",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

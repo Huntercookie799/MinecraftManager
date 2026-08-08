@@ -1,0 +1,33 @@
+{
+  "name": "@minecraft-manager/backend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "API Fastify para controlar un servidor Minecraft Paper.",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/index.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.3.0",
+    "@fastify/jwt": "^10.2.1",
+    "@fastify/static": "^10.1.3",
+    "@fastify/websocket": "^11.3.0",
+    "@prisma/client": "^7.9.1",
+    "bcrypt": "^6.0.0",
+    "dotenv": "^17.4.2",
+    "fastify": "^5.11.2",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "@types/bcrypt": "^6.0.0",
+    "@types/node": "^26.2.0",
+    "@types/ws": "^8.18.1",
+    "prisma": "^7.9.1",
+    "tsx": "^4.23.11",
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
+  }
+}

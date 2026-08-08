@@ -1,0 +1,41 @@
+services:
+  mysql:
+    image: mysql:8.0
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: minecraft_manager
+    volumes:
+      - mysql_data:/var/lib/mysql
+    restart: unless-stopped
+
+  minecraft-controller:
+    build:
+      context: .
+      dockerfile: docker/controller.Dockerfile
+    ports:
+      - "${BACKEND_PORT:-3000}:3000"
+      - "${MINECRAFT_PORT:-25565}:25565"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOST: 0.0.0.0
+      CORS_ORIGIN: ${CORS_ORIGIN:-*}
+      MINECRAFT_DIR: /minecraft/server
+      PAPER_JAR: /minecraft/server/paper.jar
+      JAVA_BIN: java
+      JAVA_MIN_MEMORY: ${JAVA_MIN_MEMORY:-1G}
+      JAVA_MAX_MEMORY: ${JAVA_MAX_MEMORY:-2G}
+      LOG_BUFFER_SIZE: ${LOG_BUFFER_SIZE:-500}
+      MINECRAFT_STOP_TIMEOUT_MS: ${MINECRAFT_STOP_TIMEOUT_MS:-30000}
+      DATABASE_URL: mysql://root:root@mysql:3306/minecraft_manager
+    volumes:
+      - ./minecraft/server:/minecraft/server
+      - ./minecraft/backups:/minecraft/backups
+    depends_on:
+      - mysql
+    restart: unless-stopped
+
+volumes:
+  mysql_data:
