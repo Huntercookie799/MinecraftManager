@@ -1,5 +1,6 @@
 import cors from "@fastify/cors";
 import fastifyJwt from "@fastify/jwt";
+import fastifyMultipart from "@fastify/multipart";
 import fastifyStatic from "@fastify/static";
 import websocket from "@fastify/websocket";
 import bcrypt from "bcrypt";
@@ -9,10 +10,11 @@ import { env } from "./config/env";
 import { prisma } from "./db/prisma";
 import { registerAuthRoutes } from "./routes/auth.routes";
 import { registerServerRoutes } from "./routes/server.routes";
-import { MinecraftService } from "./services/MinecraftService";
+import { registerWorldsRoutes } from "./routes/worlds.routes";
+import { serverManager } from "./services/ServerManager";
 import { registerLogSocket } from "./websocket/logs";
 
-export async function buildApp(minecraft = new MinecraftService()) {
+export async function buildApp() {
   const app = Fastify({
     logger: {
       level: env.nodeEnv === "test" ? "silent" : "info"
@@ -22,6 +24,13 @@ export async function buildApp(minecraft = new MinecraftService()) {
   await app.register(cors, {
     origin: env.corsOrigin === "*" ? true : env.corsOrigin
   });
+  
+  await app.register(fastifyMultipart, {
+    limits: {
+      fileSize: 500 * 1024 * 1024 // Limitar a 500MB
+    }
+  });
+  
   await app.register(websocket);
   
   await app.register(fastifyStatic, {
@@ -36,7 +45,6 @@ export async function buildApp(minecraft = new MinecraftService()) {
   // Verify function
   app.decorate("authenticate", async (request: any, reply: any) => {
     try {
-      // Allow token via query param (for websockets)
       if (request.query && request.query.token) {
         request.headers.authorization = `Bearer ${request.query.token}`;
       }
@@ -55,12 +63,17 @@ export async function buildApp(minecraft = new MinecraftService()) {
 
   await app.register(async (server) => {
     server.addHook("onRequest", (server as any).authenticate);
-    await registerServerRoutes(server, minecraft);
+    await registerServerRoutes(server);
   }, { prefix: "/api/server" });
 
   await app.register(async (server) => {
     server.addHook("onRequest", (server as any).authenticate);
-    await registerLogSocket(server, minecraft);
+    await registerWorldsRoutes(server);
+  }, { prefix: "/api/server/:serverId/worlds" });
+
+  await app.register(async (server) => {
+    server.addHook("onRequest", (server as any).authenticate);
+    await registerLogSocket(server);
   }, { prefix: "/ws" });
 
   app.addHook("onReady", async () => {
@@ -79,7 +92,7 @@ export async function buildApp(minecraft = new MinecraftService()) {
   });
 
   app.addHook("onClose", async () => {
-    await minecraft.dispose();
+    await serverManager.stopAll();
   });
 
   return app;

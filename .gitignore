@@ -2,10 +2,12 @@ node_modules/
 dist/
 coverage/
 .env
+.env.*
+!.env.example
 backend/.env
 npm-debug.log*
 
-# Minecraft runtime artifacts
+# ── Minecraft runtime artifacts ──────────────────────────────
 minecraft/server/*.jar
 minecraft/server/cache/
 minecraft/server/crash-reports/
@@ -24,3 +26,36 @@ minecraft/server/config/*
 !minecraft/server/config/.gitkeep
 minecraft/backups/*
 !minecraft/backups/.gitkeep
+
+# Archivos generados por el servidor al arrancar (privados)
+minecraft/server/eula.txt
+minecraft/server/server.properties
+minecraft/server/ops.json
+minecraft/server/server-icon.png
+minecraft/server/session.lock
+minecraft/server/paper-global.yml
+minecraft/server/paper-world-defaults.yml
+minecraft/server/spigot.yml
+minecraft/server/bukkit.yml
+
+# ── Carpetas de servidores creados dinámicamente ─────────────
+backend/minecraft_servers/
+
+# ── Uploads y thumbnails generados ──────────────────────────
+backend/public/uploads/*
+!backend/public/uploads/.gitkeep
+backend/public/thumbnails/*
+!backend/public/thumbnails/.gitkeep
+
+# ── Base de datos SQLite ─────────────────────────────────────
+backend/prisma/*.db
+backend/prisma/*.db-journal
+backend/prisma/*.db-wal
+backend/prisma/*.db-shm
+
+# ── Archivos de IDE y sistema ────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+

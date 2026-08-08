@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mi Perfil - Minecraft Manager</title>
+  <link rel="stylesheet" href="/style.css">
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://unpkg.com/skinview3d@3.0.0-alpha.1/bundles/skinview3d.bundle.js"></script>
+</head>
+<body>
+
+  <!-- Sidebar -->
+  <div class="sidebar">
+    <div class="logo-area">
+      <h1>Minecraft <span>Manager</span></h1>
+    </div>
+    <ul class="nav">
+      <li><a href="/dashboard.html" style="display: flex; align-items: center; gap: 8px;"><i data-lucide="server" style="width: 18px; height: 18px;"></i> Mis Servidores</a></li>
+      <li class="active"><a href="/profile.html" style="display: flex; align-items: center; gap: 8px;"><i data-lucide="user" style="width: 18px; height: 18px;"></i> Mi Perfil</a></li>
+      <li><a href="#" id="btn-logout" style="color: var(--color-danger); display: flex; align-items: center; gap: 8px;"><i data-lucide="log-out" style="width: 18px; height: 18px;"></i> Cerrar Sesión</a></li>
+    </ul>
+  </div>
+
+  <!-- Content -->
+  <div class="content" id="app-container">
+    <div class="header">
+      <div class="server-title">
+        <h2>Mi Perfil</h2>
+        <p>Configura tu cuenta y apariencia</p>
+      </div>
+    </div>
+
+    <div class="cards-grid" style="grid-template-columns: 1fr 1fr;">
+      
+      <!-- Datos Personales -->
+      <div class="card">
+        <h3><i data-lucide="settings"></i> Datos de la Cuenta</h3>
+        <form id="profile-form" style="display: flex; flex-direction: column; gap: 15px;">
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <label style="font-weight: 500;">Nombre de Usuario:</label>
+            <input type="text" id="username" placeholder="Tu usuario" style="padding: 12px; border-radius: 8px; border: 1px solid var(--border-color-darker); background: rgba(15, 23, 42, 0.5); color: white;">
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <label style="font-weight: 500;">Nueva Contraseña (opcional):</label>
+            <input type="password" id="password" placeholder="***" style="padding: 12px; border-radius: 8px; border: 1px solid var(--border-color-darker); background: rgba(15, 23, 42, 0.5); color: white;">
+          </div>
+          <div id="profile-msg" style="color: var(--color-success); font-weight: bold; display: none;"></div>
+          <div style="margin-top: 10px;">
+            <ui-button variant="blue" type="submit" id="btn-save-profile">Guardar Cambios</ui-button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Foto de Perfil y Skin -->
+      <div class="card" style="display: flex; flex-direction: column; gap: 20px;">
+        <h3><i data-lucide="image"></i> Apariencia</h3>
+        
+        <div style="display: flex; gap: 20px; align-items: center;">
+          <img id="avatar-preview" src="/default-avatar.png" alt="Avatar" style="width: 80px; height: 80px; border-radius: 50%; object-fit: cover; border: 2px solid var(--color-blue);">
+          <div style="flex: 1;">
+            <label style="font-weight: 500; display: block; margin-bottom: 8px;">Foto de Perfil:</label>
+            <input type="file" id="upload-avatar" accept="image/*" style="display: none;">
+            <ui-button variant="secondary" onclick="document.getElementById('upload-avatar').click()">Subir Imagen</ui-button>
+          </div>
+        </div>
+
+        <hr style="border: 0; border-top: 1px dashed rgba(255,255,255,0.1);">
+
+        <div>
+          <label style="font-weight: 500; display: block; margin-bottom: 8px;">Skin de Minecraft (.png):</label>
+          <input type="file" id="upload-skin" accept=".png" style="display: none;">
+          <ui-button variant="secondary" onclick="document.getElementById('upload-skin').click()">Subir Skin</ui-button>
+          
+          <div style="margin-top: 20px; text-align: center;">
+            <p style="margin-bottom: 10px; font-size: 0.9rem; color: var(--text-color);">Previsualización 3D</p>
+            <div id="skin-viewer" style="width: 250px; height: 350px; margin: 0 auto; background: rgba(15, 23, 42, 0.4); border-radius: 12px; border: 1px solid var(--border-color);">
+              <!-- Skin view canvas -->
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- Cuentas de Minecraft Vinculadas -->
+    <div class="header" style="margin-top: 40px;">
+      <div class="server-title">
+        <h2>Cuentas de Minecraft Vinculadas</h2>
+        <p>Administra tus múltiples perfiles dentro del juego</p>
+      </div>
+      <div class="server-actions">
+        <ui-button variant="success" id="btn-show-add-account" style="width: auto;">Vincular Nueva Cuenta</ui-button>
+      </div>
+    </div>
+
+    <div class="cards-grid" id="accounts-list" style="margin-top: 20px;">
+      <!-- Cuentas generadas por JS -->
+    </div>
+
+  </div>
+
+  <!-- Modal para Nueva Cuenta -->
+  <div id="add-account-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center; backdrop-filter: blur(5px);">
+    <div class="card" style="width: 400px;">
+      <h3>Vincular Cuenta de Minecraft</h3>
+      <div style="display: flex; flex-direction: column; gap: 15px; margin-top: 20px;">
+        <div>
+          <label style="display: block; margin-bottom: 5px; font-weight: 500;">Nametag (Nombre de Usuario)</label>
+          <input type="text" id="new-account-nametag" placeholder="Ej: Steve" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border-color-darker); background: rgba(15, 23, 42, 0.5); color: white;">
+        </div>
+        <div style="display: flex; gap: 10px; margin-top: 10px;">
+          <ui-button variant="secondary" id="btn-cancel-add-account">Cancelar</ui-button>
+          <ui-button variant="success" id="btn-confirm-add-account">Añadir Cuenta</ui-button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/js/pages/profile.js"></script>
+</body>
+</html>

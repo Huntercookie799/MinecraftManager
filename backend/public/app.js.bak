@@ -1,0 +1,496 @@
+document.addEventListener('DOMContentLoaded', () => {
+  const btnStart = document.getElementById('btn-start');
+  const btnRestart = document.getElementById('btn-restart');
+  const btnStop = document.getElementById('btn-stop');
+  const statusBadge = document.getElementById('status-badge');
+  const statusText = document.getElementById('status-text');
+  
+  const terminalOutput = document.getElementById('terminal-output');
+  const commandInput = document.getElementById('command-input');
+  const btnSendCommand = document.getElementById('btn-send-command');
+
+  const loginScreen = document.getElementById('login-screen');
+  const appContainer = document.getElementById('app-container');
+  const loginForm = document.getElementById('login-form');
+  const loginError = document.getElementById('login-error');
+
+  let currentStatus = 'offline';
+  let jwtToken = localStorage.getItem('mm_token');
+
+  // --- Auth & API Functions ---
+  function checkAuth() {
+    if (jwtToken) {
+      loginScreen.style.display = 'none';
+      appContainer.style.display = 'flex';
+      pollStatus();
+      setupWebSocket();
+    } else {
+      loginScreen.style.display = 'flex';
+      appContainer.style.display = 'none';
+    }
+  }
+
+  function handleLogout() {
+    localStorage.removeItem('mm_token');
+    jwtToken = null;
+    window.location.reload();
+  }
+
+  async function apiCall(endpoint, method = 'GET', body = null, prefix = '/api/server') {
+    if (!jwtToken) return null;
+    
+    try {
+      const options = { 
+        method, 
+        headers: {
+          'Authorization': `Bearer ${jwtToken}`
+        } 
+      };
+      if (body) {
+        options.headers['Content-Type'] = 'application/json';
+        options.body = JSON.stringify(body);
+      }
+      const response = await fetch(`${prefix}${endpoint}`, options);
+      if (response.status === 401) {
+        handleLogout();
+        throw new Error('Unauthorized');
+      }
+      
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Network response was not ok');
+      return data;
+    } catch (error) {
+      console.error(`Error calling ${endpoint}:`, error);
+      alert(error.message);
+      return null;
+    }
+  }
+
+  // --- Login Form ---
+  loginForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const username = document.getElementById('username').value;
+    const password = document.getElementById('password').value;
+    const btn = document.getElementById('btn-login');
+    
+    btn.disabled = true;
+    loginError.textContent = '';
+    
+    try {
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Login failed');
+      }
+      
+      jwtToken = data.token;
+      localStorage.setItem('mm_token', jwtToken);
+      checkAuth();
+    } catch (err) {
+      loginError.textContent = err.message;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  // --- Status Management ---
+  function updateUI(rawStatus) {
+    if (!rawStatus) return;
+    const status = rawStatus.toLowerCase();
+    
+    if (status === currentStatus) return;
+    currentStatus = status;
+
+    statusBadge.className = `status-badge ${status}`;
+    statusText.textContent = status.toUpperCase();
+
+    if (status === 'offline') {
+      btnStart.disabled = false;
+      btnStop.disabled = true;
+      btnRestart.disabled = true;
+      commandInput.disabled = true;
+      btnSendCommand.disabled = true;
+    } else if (status === 'online') {
+      btnStart.disabled = true;
+      btnStop.disabled = false;
+      btnRestart.disabled = false;
+      commandInput.disabled = false;
+      btnSendCommand.disabled = false;
+    } else {
+      btnStart.disabled = true;
+      btnStop.disabled = true;
+      btnRestart.disabled = true;
+      commandInput.disabled = true;
+      btnSendCommand.disabled = true;
+    }
+  }
+
+  async function pollStatus() {
+    if (!jwtToken) return;
+    const data = await apiCall('/status');
+    if (data && data.status) {
+      updateUI(data.status);
+      
+      if (data.ip) document.getElementById('server-ip').textContent = data.ip;
+      if (data.version) document.getElementById('server-version').textContent = data.version;
+      if (data.memory) document.getElementById('server-memory').textContent = data.memory;
+    }
+    setTimeout(pollStatus, 3000);
+  }
+
+  // --- Button Event Listeners ---
+  btnStart.addEventListener('click', async () => {
+    btnStart.disabled = true;
+    await apiCall('/start', 'POST');
+    updateUI('starting');
+  });
+
+  btnStop.addEventListener('click', async () => {
+    btnStop.disabled = true;
+    await apiCall('/stop', 'POST');
+    updateUI('stopping');
+  });
+
+  btnRestart.addEventListener('click', async () => {
+    btnRestart.disabled = true;
+    await apiCall('/restart', 'POST');
+    updateUI('starting');
+  });
+
+  async function sendCommand() {
+    const command = commandInput.value.trim();
+    if (!command) return;
+    
+    commandInput.value = '';
+    commandInput.disabled = true;
+    btnSendCommand.disabled = true;
+
+    await apiCall('/command', 'POST', { command });
+    
+    if (currentStatus === 'online') {
+      commandInput.disabled = false;
+      btnSendCommand.disabled = false;
+      commandInput.focus();
+    }
+  }
+
+  btnSendCommand.addEventListener('click', sendCommand);
+  commandInput.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') sendCommand();
+  });
+
+  // --- WebSocket ---
+  function setupWebSocket() {
+    if (!jwtToken) return;
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    // Pasar token por query parameter para fastify-jwt
+    const wsUrl = `${protocol}//${window.location.host}/ws/logs?token=${jwtToken}`;
+    const ws = new WebSocket(wsUrl);
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'snapshot') {
+          data.logs.forEach(log => appendLog(log));
+        } else if (data.type === 'log') {
+          appendLog(data.log);
+        }
+      } catch (e) {
+        appendLog(event.data);
+      }
+    };
+
+    function appendLog(message) {
+      if (typeof message !== 'string') return;
+      let type = 'info';
+      if (message.includes('WARN')) type = 'warn';
+      else if (message.includes('ERROR')) type = 'error';
+      else if (message.startsWith('>')) type = 'cmd';
+
+      const line = document.createElement('div');
+      line.className = `terminal-line ${type}`;
+      line.textContent = message;
+      
+      terminalOutput.appendChild(line);
+      
+      if (terminalOutput.children.length > 500) {
+        terminalOutput.removeChild(terminalOutput.firstChild);
+      }
+      terminalOutput.scrollTop = terminalOutput.scrollHeight;
+    }
+
+    ws.onclose = () => {
+      if (jwtToken) {
+        console.log('WebSocket closed, reconnecting in 5s...');
+        setTimeout(setupWebSocket, 5000);
+      }
+    };
+  }
+
+  // --- UI Tabs Logic ---
+  const navItems = document.querySelectorAll('.nav-item');
+  const tabContents = document.querySelectorAll('.tab-content');
+
+  navItems.forEach(item => {
+    item.addEventListener('click', (e) => {
+      e.preventDefault();
+      const targetTab = item.getAttribute('data-tab');
+      if (!targetTab) return;
+
+      navItems.forEach(n => n.classList.remove('active'));
+      item.classList.add('active');
+
+      tabContents.forEach(t => {
+        t.classList.remove('active');
+      });
+      
+      const targetElement = document.getElementById(targetTab);
+      if (targetElement) {
+        targetElement.classList.add('active');
+        if (targetTab === 'tab-worlds') {
+          loadWorlds();
+        }
+      }
+    });
+  });
+
+  // --- Worlds Management ---
+  const worldsGrid = document.getElementById('worlds-grid');
+  
+  // Modals
+  const modalCreateWorld = document.getElementById('modal-create-world');
+  const modalUploadWorld = document.getElementById('modal-upload-world');
+  const modalEditWorld = document.getElementById('modal-edit-world');
+  
+  // Create
+  document.getElementById('btn-show-create-world').addEventListener('click', () => {
+    document.getElementById('new-world-name').value = '';
+    modalCreateWorld.style.display = 'flex';
+  });
+  document.getElementById('btn-cancel-create-world').addEventListener('click', () => {
+    modalCreateWorld.style.display = 'none';
+  });
+  document.getElementById('btn-create-world-confirm').addEventListener('click', async () => {
+    const name = document.getElementById('new-world-name').value.trim();
+    if (!name) return alert('Debes introducir un nombre.');
+    
+    document.getElementById('btn-create-world-confirm').disabled = true;
+    const res = await apiCall('/', 'POST', { name }, '/api/worlds');
+    document.getElementById('btn-create-world-confirm').disabled = false;
+    
+    if (res) {
+      modalCreateWorld.style.display = 'none';
+      loadWorlds();
+    }
+  });
+
+  // Upload
+  document.getElementById('btn-show-upload-world').addEventListener('click', () => {
+    document.getElementById('upload-world-name').value = '';
+    document.getElementById('upload-world-file').value = '';
+    modalUploadWorld.style.display = 'flex';
+  });
+  document.getElementById('btn-cancel-upload-world').addEventListener('click', () => {
+    modalUploadWorld.style.display = 'none';
+  });
+  document.getElementById('btn-upload-world-confirm').addEventListener('click', async () => {
+    const fileInput = document.getElementById('upload-world-file');
+    const nameInput = document.getElementById('upload-world-name').value.trim();
+    
+    if (!fileInput.files.length) return alert('Selecciona un archivo ZIP primero.');
+    
+    const formData = new FormData();
+    formData.append('file', fileInput.files[0]);
+    if (nameInput) formData.append('name', nameInput);
+    
+    const btn = document.getElementById('btn-upload-world-confirm');
+    btn.disabled = true;
+    btn.textContent = 'Subiendo...';
+    
+    try {
+      const response = await fetch('/api/worlds/upload', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${jwtToken}` },
+        body: formData
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || 'Upload failed');
+      
+      modalUploadWorld.style.display = 'none';
+      loadWorlds();
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      btn.disabled = false;
+      btn.textContent = 'Subir';
+    }
+  });
+
+  // Edit
+  document.getElementById('btn-cancel-edit-world').addEventListener('click', () => {
+    modalEditWorld.style.display = 'none';
+  });
+  document.getElementById('btn-save-edit-world').addEventListener('click', async () => {
+    const id = document.getElementById('edit-world-id').value;
+    const name = document.getElementById('edit-world-name').value.trim();
+    const thumbnailInput = document.getElementById('edit-world-thumbnail');
+    
+    if (!name) return alert('El nombre no puede estar vacío.');
+    
+    const btn = document.getElementById('btn-save-edit-world');
+    btn.disabled = true;
+    
+    // Rename
+    const res = await apiCall(`/${id}`, 'PUT', { name }, '/api/worlds');
+    
+    // Upload thumbnail if selected
+    if (res && thumbnailInput.files.length > 0) {
+      const formData = new FormData();
+      formData.append('file', thumbnailInput.files[0]);
+      try {
+        await fetch(`/api/worlds/${id}/thumbnail`, {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${jwtToken}` },
+          body: formData
+        });
+      } catch(e) {
+        console.error('Error uploading thumbnail', e);
+      }
+    }
+    
+    btn.disabled = false;
+    modalEditWorld.style.display = 'none';
+    loadWorlds();
+  });
+
+  async function loadWorlds() {
+    const data = await apiCall('/', 'GET', null, '/api/worlds');
+    if (!data || !data.worlds) return;
+
+    worldsGrid.innerHTML = '';
+    data.worlds.forEach(world => {
+      const card = document.createElement('div');
+      card.className = 'world-card';
+      
+      const thumbUrl = world.thumbnail || "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><rect x='3' y='3' width='18' height='18' rx='2' ry='2'></rect><circle cx='8.5' cy='8.5' r='1.5'></circle><polyline points='21 15 16 10 5 21'></polyline></svg>";
+      
+      let badge = '';
+      if (world.isActive) {
+        badge = `<div class="world-badge">ACTIVO</div>`;
+      }
+      
+      card.innerHTML = `
+        <div class="world-thumbnail" style="background-image: url('${thumbUrl}')">
+          ${badge}
+        </div>
+        <div class="world-info">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <div>
+              <h4>${world.name}</h4>
+              <p>Creado: ${new Date(world.createdAt).toLocaleDateString()}</p>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 0.75rem; color: #777; font-weight: bold;">${world.isActive ? 'Activo' : 'Cargar'}</span>
+              <label class="toggle-switch">
+                <input type="checkbox" class="toggle-load-world" data-id="${world.id}" ${world.isActive ? 'checked disabled' : ''}>
+                <span class="toggle-slider"></span>
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="world-actions">
+          <button class="btn btn-blue btn-edit-world" data-id="${world.id}" data-name="${world.name}">Editar</button>
+          <button class="btn btn-warning btn-export-world" data-id="${world.id}" data-name="${world.name}">Exportar</button>
+          ${!world.isActive ? `<button class="btn btn-danger btn-delete-world" data-id="${world.id}">X</button>` : ''}
+        </div>
+      `;
+      worldsGrid.appendChild(card);
+    });
+
+    document.querySelectorAll('.toggle-load-world').forEach(toggle => {
+      toggle.addEventListener('change', async (e) => {
+        if (!e.target.checked) return; // Ignore unchecking manually if possible
+        
+        const id = e.target.getAttribute('data-id');
+        if (confirm('Esto cambiará el mundo actual. ¿Estás seguro de que el servidor está APAGADO?')) {
+          e.target.disabled = true;
+          const res = await apiCall(`/${id}/load`, 'POST', null, '/api/worlds');
+          if (res) loadWorlds();
+          else {
+            e.target.checked = false;
+            e.target.disabled = false;
+          }
+        } else {
+          e.target.checked = false;
+        }
+      });
+    });
+
+    document.querySelectorAll('.btn-delete-world').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const id = e.target.getAttribute('data-id');
+        if (confirm('¿Estás totalmente seguro de eliminar este mundo para siempre?')) {
+          e.target.disabled = true;
+          const res = await apiCall(`/${id}`, 'DELETE', null, '/api/worlds');
+          if (res) loadWorlds();
+          else e.target.disabled = false;
+        }
+      });
+    });
+
+    document.querySelectorAll('.btn-edit-world').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const id = e.target.getAttribute('data-id');
+        const name = e.target.getAttribute('data-name');
+        document.getElementById('edit-world-id').value = id;
+        document.getElementById('edit-world-name').value = name;
+        document.getElementById('edit-world-thumbnail').value = '';
+        modalEditWorld.style.display = 'flex';
+      });
+    });
+    
+    document.querySelectorAll('.btn-export-world').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const id = e.target.getAttribute('data-id');
+        const name = e.target.getAttribute('data-name');
+        
+        e.target.textContent = '...';
+        e.target.disabled = true;
+        try {
+          const response = await fetch(`/api/worlds/${id}/export`, {
+            headers: { 'Authorization': `Bearer ${jwtToken}` }
+          });
+          
+          if (!response.ok) {
+            const data = await response.json();
+            throw new Error(data.error || 'Export failed');
+          }
+          
+          const blob = await response.blob();
+          const url = window.URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${name}.zip`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          window.URL.revokeObjectURL(url);
+        } catch (err) {
+          alert(err.message);
+        } finally {
+          e.target.textContent = 'Exportar';
+          e.target.disabled = false;
+        }
+      });
+    });
+  }
+
+  // Start app
+  checkAuth();
+});

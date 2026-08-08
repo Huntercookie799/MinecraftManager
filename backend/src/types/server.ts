@@ -2,6 +2,18 @@ export type ServerState = "OFFLINE" | "STARTING" | "ONLINE" | "STOPPING" | "ERRO
 
 export type LogStream = "stdout" | "stderr" | "system";
 
+export type Dimension = "overworld" | "nether" | "end" | "unknown";
+
+export interface PlayerInfo {
+  name: string;
+  online: boolean;
+  playtimeSeconds: number;
+  dimension: Dimension;
+  x: number | null;
+  y: number | null;
+  z: number | null;
+}
+
 export interface LogEntry {
   id: number;
   timestamp: string;
@@ -19,4 +31,10 @@ export interface ServerStatus {
   pid?: number;
   startedAt?: string;
   lastError?: string;
+  version?: string;
+  ip?: string;
+  memory?: string;
+  port?: number;
+  worldTime?: number | null;
+  playersInfo?: PlayerInfo[];
 }
