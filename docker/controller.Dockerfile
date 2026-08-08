@@ -42,6 +42,7 @@ COPY backend/prisma ./prisma
 RUN npm install --omit=dev && npx --yes prisma generate
 
 COPY --from=build /app/backend/dist ./dist
+COPY backend/public ./public
 
 EXPOSE 3000 25565
 CMD ["/app/scripts/start-render.sh"]

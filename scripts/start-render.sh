@@ -20,7 +20,7 @@ echo "eula=true" > /minecraft/server/eula.txt
 
 # Iniciar Playit.gg en segundo plano, guardando su clave secreta en el disco persistente
 echo "Iniciando Playit.gg..."
-cd /minecraft && playit --secret_path /minecraft/playit_secret.toml &
+cd /minecraft && playit --secret-path /minecraft/playit_secret.toml &
 PLAYIT_PID=$!
 
 # Volver al directorio de la app y arrancar Node
