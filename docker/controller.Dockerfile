@@ -1,3 +1,5 @@
+FROM eclipse-temurin:21-jre AS java-base
+
 FROM node:22-bookworm-slim AS build
 
 WORKDIR /app/backend
@@ -10,8 +12,13 @@ RUN npm run build
 
 FROM node:22-bookworm-slim AS runtime
 
+# Copiar Java 21 desde la imagen oficial para evitar problemas de repositorios en Debian 12
+COPY --from=java-base /opt/java/openjdk /opt/java/openjdk
+ENV JAVA_HOME=/opt/java/openjdk
+ENV PATH="${JAVA_HOME}/bin:${PATH}"
+
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends openjdk-21-jre-headless ca-certificates curl \
+  && apt-get install -y --no-install-recommends ca-certificates curl \
   && curl -L -o /usr/local/bin/playit https://github.com/playit-cloud/playit-agent/releases/latest/download/playit-linux-amd64 \
   && chmod +x /usr/local/bin/playit \
   && rm -rf /var/lib/apt/lists/*
