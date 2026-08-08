@@ -4,12 +4,8 @@ services:
     env: docker
     dockerfilePath: docker/controller.Dockerfile
     dockerContext: .
-    plan: free # Puedes cambiar a starter si lo deseas
+    plan: free
     healthCheckPath: /health
-    disk:
-      name: minecraft-data
-      mountPath: /minecraft
-      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
