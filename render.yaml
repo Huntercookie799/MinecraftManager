@@ -14,7 +14,7 @@ services:
       - key: JAVA_MAX_MEMORY
         value: 1G
       - key: DATABASE_URL
-        value: # URL DE TU BASE DE DATOS (Ej: mysql://user:pass@host:3306/db)
+        sync: false  # Configurar manualmente en Render Dashboard → Environment
       - key: JWT_SECRET
         generateValue: true
       - key: CORS_ORIGIN
