@@ -51,5 +51,11 @@ export const env = {
   ],
   logBufferSize: numberFromEnv("LOG_BUFFER_SIZE", 500),
   stopTimeoutMs: numberFromEnv("MINECRAFT_STOP_TIMEOUT_MS", 30_000),
-  commandMaxLength: numberFromEnv("MINECRAFT_COMMAND_MAX_LENGTH", 500)
+  commandMaxLength: numberFromEnv("MINECRAFT_COMMAND_MAX_LENGTH", 500),
+  s3: {
+    endpoint: process.env.S3_ENDPOINT,
+    bucket: process.env.S3_BUCKET,
+    accessKey: process.env.S3_ACCESS_KEY,
+    secretKey: process.env.S3_SECRET_KEY,
+  }
 };

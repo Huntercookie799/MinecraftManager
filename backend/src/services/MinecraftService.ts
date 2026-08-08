@@ -21,6 +21,8 @@ interface PlayerState {
   names: string[];
 }
 
+import { S3SyncService } from "./S3SyncService";
+
 export interface MinecraftServerConfig {
   id: number;
   name: string;
@@ -71,8 +73,11 @@ export class MinecraftService extends EventEmitter {
   // Used to correlate pending data queries
   private pendingDataQuery: string | null = null;
 
+  private s3Sync: S3SyncService;
+
   constructor(public readonly config: MinecraftServerConfig) {
     super();
+    this.s3Sync = new S3SyncService();
   }
 
   async start(): Promise<ServerStatus> {
@@ -87,6 +92,14 @@ export class MinecraftService extends EventEmitter {
     this.state = "STARTING";
     this.startedAt = new Date();
     this.lastError = undefined;
+    
+    // S3: Restaurar desde el backup antes de arrancar
+    try {
+      await this.s3Sync.downloadAndUnzip(this.config.directory, (msg) => this.addLog("system", msg));
+    } catch (e: any) {
+      this.addLog("system", `Failed to sync from S3: ${e.message}`);
+    }
+
     this.addLog("system", `Starting Minecraft from ${this.config.directory}`);
 
     const args = ["-Xms" + this.config.memory, "-Xmx" + this.config.memory, "-jar", env.paperJar, "nogui"];
@@ -112,7 +125,7 @@ export class MinecraftService extends EventEmitter {
       this.stopPolling();
     });
 
-    child.once("exit", (code, signal) => {
+    child.once("exit", async (code, signal) => {
       this.flushRemainder("stdout");
       this.flushRemainder("stderr");
 
@@ -128,6 +141,13 @@ export class MinecraftService extends EventEmitter {
 
       if (!expectedStop) {
         this.lastError = `Minecraft exited unexpectedly with code ${code ?? "null"}.`;
+      }
+
+      // S3: Crear un backup tras apagarse (esperado o inesperado)
+      try {
+        await this.s3Sync.zipAndUpload(this.config.directory, (msg) => this.addLog("system", msg));
+      } catch (e: any) {
+        this.addLog("system", `Failed to backup to S3: ${e.message}`);
       }
     });
 
