@@ -24,7 +24,10 @@ cd /minecraft && playit --secret-path /minecraft/playit_secret.toml &
 PLAYIT_PID=$!
 
 # Volver al directorio de la app y arrancar Node
+echo "Actualizando esquema de Base de Datos..."
 cd /app/backend
+npx --yes prisma db push --skip-generate
+
 echo "Iniciando Backend Node.js..."
 node dist/index.js
 
