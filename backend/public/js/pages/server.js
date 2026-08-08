@@ -84,20 +84,29 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   DOM.on('tab-server', 'click', (e) => {
     e.preventDefault();
-    DOM.get('tab-server').classList.add('active');
-    DOM.get('tab-worlds').classList.remove('active');
-    DOM.get('view-server').classList.add('active');
-    DOM.get('view-worlds').classList.remove('active');
+    setActiveTab('server');
   });
 
   DOM.on('tab-worlds', 'click', (e) => {
     e.preventDefault();
-    DOM.get('tab-worlds').classList.add('active');
-    DOM.get('tab-server').classList.remove('active');
-    DOM.get('view-worlds').classList.add('active');
-    DOM.get('view-server').classList.remove('active');
+    setActiveTab('worlds');
     loadWorlds();
   });
+
+  DOM.on('tab-files', 'click', (e) => {
+    e.preventDefault();
+    setActiveTab('files');
+    loadFiles('.');
+  });
+
+  function setActiveTab(tab) {
+    ['server', 'worlds', 'files'].forEach(t => {
+      const tabEl = DOM.get(`tab-${t}`);
+      const viewEl = DOM.get(`view-${t}`);
+      if (tabEl) tabEl.classList.toggle('active', t === tab);
+      if (viewEl) viewEl.classList.toggle('active', t === tab);
+    });
+  }
 
   // ─── Actions ───────────────────────────────────────────────────────────────
 
@@ -182,7 +191,35 @@ document.addEventListener('DOMContentLoaded', async () => {
     DOM.get('info-players').textContent = `${statusObj.players}/${statusObj.maxPlayers}`;
     DOM.get('info-uptime').textContent = formatUptime(statusObj.uptime);
     if (statusObj.version) DOM.get('info-version').textContent = statusObj.version;
-    if (statusObj.ip && statusObj.port) DOM.get('info-ip').textContent = `${statusObj.ip}:${statusObj.port}`;
+
+    // IP / Tunnel address
+    const tunnelInput = document.getElementById('tunnel-addr-input');
+    const savedTunnel = localStorage.getItem(`tunnel_${serverId}`) || '';
+    const displayIP = savedTunnel || (statusObj.ip && statusObj.port ? `${statusObj.ip}:${statusObj.port}` : '--');
+    DOM.get('info-ip').textContent = displayIP;
+
+    // Show Render TCP banner if hostname includes 'onrender.com' and no tunnel saved
+    const renderBanner = document.getElementById('render-tcp-banner');
+    const isRender = window.location.hostname.includes('onrender.com') || (statusObj.ip && statusObj.ip.includes('onrender.com'));
+    if (renderBanner) {
+      renderBanner.style.display = isRender ? 'flex' : 'none';
+      if (tunnelInput && !tunnelInput._listenerAdded) {
+        tunnelInput._listenerAdded = true;
+        tunnelInput.value = savedTunnel;
+        tunnelInput.addEventListener('change', () => {
+          const val = tunnelInput.value.trim();
+          if (val) {
+            localStorage.setItem(`tunnel_${serverId}`, val);
+          } else {
+            localStorage.removeItem(`tunnel_${serverId}`);
+          }
+          DOM.get('info-ip').textContent = val || `${statusObj.ip}:${statusObj.port}`;
+        });
+      }
+    }
+
+    // World exists indicator
+    updateWorldExistsUI(statusObj.worldExists);
 
     // World time indicator
     updateWorldTimeUI(statusObj.worldTime);
@@ -199,6 +236,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (h > 0) return `${h}h ${m}m ${s}s`;
     if (m > 0) return `${m}m ${s}s`;
     return `${s}s`;
+  }
+
+  function updateWorldExistsUI(exists) {
+    const badge = document.getElementById('world-exists-badge');
+    const worldStatus = document.getElementById('info-world-status');
+    if (!badge) return;
+    if (exists === undefined || exists === null) {
+      badge.style.display = 'none';
+      if (worldStatus) worldStatus.textContent = '--';
+      return;
+    }
+    badge.style.display = 'flex';
+    badge.className = `world-exists-badge ${exists ? 'world-exists-yes' : 'world-exists-no'}`;
+    document.getElementById('world-exists-icon').textContent = exists ? '🌍' : '📦';
+    document.getElementById('world-exists-label').textContent = exists ? 'Mundo generado' : 'Sin mundo aún';
+    if (worldStatus) worldStatus.textContent = exists ? '✅ Generado' : '⏳ Pendiente';
   }
 
   function updateWorldTimeUI(worldTime) {
@@ -294,13 +347,29 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ─── WebSocket ─────────────────────────────────────────────────────────────
 
+  let wsReconnectDelay = 2000; // Empieza en 2s, crece con backoff
+  let wsKeepaliveTimer = null;
+
   function connectWebSocket() {
     if (currentWs) currentWs.close();
+    if (wsKeepaliveTimer) clearInterval(wsKeepaliveTimer);
     
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     // El backend registra el WS en /ws/logs con serverId como query param
     const wsUrl = `${protocol}//${window.location.host}/ws/logs?serverId=${serverId}&token=${API.token}`;
     currentWs = new WebSocket(wsUrl);
+
+    currentWs.onopen = () => {
+      // Resetear delay de reconexión al conectar exitosamente
+      wsReconnectDelay = 2000;
+      setWsStatus(true);
+      // Keepalive: ping cada 25s para prevenir timeout de 60s de Render
+      wsKeepaliveTimer = setInterval(() => {
+        if (currentWs && currentWs.readyState === WebSocket.OPEN) {
+          currentWs.send(JSON.stringify({ type: 'ping' }));
+        }
+      }, 25_000);
+    };
 
     currentWs.onmessage = (event) => {
       try {
@@ -321,7 +390,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     };
 
     currentWs.onclose = () => {
-      setTimeout(connectWebSocket, 3000);
+      if (wsKeepaliveTimer) { clearInterval(wsKeepaliveTimer); wsKeepaliveTimer = null; }
+      setWsStatus(false);
+      // Reconexión con backoff exponencial (máx 30s)
+      setTimeout(connectWebSocket, wsReconnectDelay);
+      wsReconnectDelay = Math.min(wsReconnectDelay * 1.5, 30_000);
     };
   }
 
@@ -339,6 +412,19 @@ document.addEventListener('DOMContentLoaded', async () => {
       terminalOutput.removeChild(terminalOutput.firstChild);
     }
     terminalOutput.scrollTop = terminalOutput.scrollHeight;
+  }
+
+  function setWsStatus(connected) {
+    const dot = document.getElementById('ws-status-dot');
+    const label = document.getElementById('ws-status-label');
+    if (!dot || !label) return;
+    if (connected) {
+      dot.className = 'ws-dot ws-dot-on';
+      label.textContent = 'En vivo';
+    } else {
+      dot.className = 'ws-dot ws-dot-off';
+      label.textContent = 'Reconectando...';
+    }
   }
 
   // ─── Init ──────────────────────────────────────────────────────────────────
@@ -427,5 +513,124 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  // ─── Files Logic ───────────────────────────────────────────────────────────
+
+  const FILE_ICONS = {
+    // Configuración
+    '.yml': '⚙️', '.yaml': '⚙️', '.json': '⚙️', '.properties': '⚙️', '.toml': '⚙️',
+    // Logs
+    '.log': '📋', '.txt': '📄',
+    // Minecraft
+    '.jar': '☕', '.zip': '📦', '.gz': '📦', '.tar': '📦',
+    // Datos
+    '.dat': '💾', '.dat_old': '💾', '.mca': '🗺️', '.mcaspec': '🗺️',
+    // Scripts
+    '.sh': '⚡', '.bat': '⚡', '.cmd': '⚡',
+    // Imágenes
+    '.png': '🖼️', '.jpg': '🖼️', '.jpeg': '🖼️',
+    // Otros
+    'default': '📄'
+  };
+
+  const FOLDER_ICONS = {
+    'world': '🌍', 'world_nether': '🔥', 'world_the_end': '🌌',
+    'plugins': '🔌', 'logs': '📋', 'cache': '💿', 'config': '⚙️',
+    'default': '📁'
+  };
+
+  function getFileIcon(name, type, ext) {
+    if (type === 'dir') return FOLDER_ICONS[name] || FOLDER_ICONS['default'];
+    return FILE_ICONS[ext] || FILE_ICONS['default'];
+  }
+
+  async function loadFiles(dirPath) {
+    const filesList = DOM.get('files-list');
+    const breadcrumb = DOM.get('files-breadcrumb');
+    if (!filesList) return;
+
+    filesList.innerHTML = `
+      <div class="files-loading">
+        <div class="files-spinner"></div>
+        <p>Cargando archivos...</p>
+      </div>`;
+
+    const data = await API.call(`/${serverId}/files?path=${encodeURIComponent(dirPath)}`, 'GET', null, '/api/server', true);
+
+    if (!data) {
+      filesList.innerHTML = `<div class="files-empty"><span>❌</span><p>No se pudo cargar los archivos.</p></div>`;
+      return;
+    }
+
+    if (!data.serverExists) {
+      filesList.innerHTML = `
+        <div class="files-empty">
+          <span>📦</span>
+          <p>El servidor aún no tiene archivos en disco.</p>
+          <small>Inícialo al menos una vez para que se generen los archivos.</small>
+        </div>`;
+      return;
+    }
+
+    // Update breadcrumb
+    if (breadcrumb) {
+      const parts = data.currentPath === '.' ? [] : data.currentPath.split('/');
+      let html = `<span class="breadcrumb-item breadcrumb-root" data-path="." style="cursor:pointer;">📁 Raíz</span>`;
+      let accumulated = '';
+      parts.forEach((p, i) => {
+        accumulated = accumulated ? `${accumulated}/${p}` : p;
+        const isLast = i === parts.length - 1;
+        const pathSnap = accumulated;
+        html += `<span class="breadcrumb-sep">/</span>`;
+        html += `<span class="breadcrumb-item ${isLast ? 'breadcrumb-current' : ''}" data-path="${pathSnap}" style="cursor:${isLast ? 'default' : 'pointer'};">${p}</span>`;
+      });
+      breadcrumb.innerHTML = html;
+      breadcrumb.querySelectorAll('.breadcrumb-item:not(.breadcrumb-current)').forEach(el => {
+        el.addEventListener('click', () => loadFiles(el.dataset.path));
+      });
+    }
+
+    if (data.items.length === 0) {
+      filesList.innerHTML = `<div class="files-empty"><span>📂</span><p>Carpeta vacía</p></div>`;
+      return;
+    }
+
+    const rows = [];
+
+    // Back button
+    if (data.parentPath !== null) {
+      rows.push(`
+        <div class="file-row file-row-back" data-path="${data.parentPath}">
+          <span class="file-icon">⬆️</span>
+          <span class="file-name">..</span>
+          <span class="file-size"></span>
+          <span class="file-date"></span>
+        </div>`);
+    }
+
+    data.items.forEach(item => {
+      const icon = getFileIcon(item.name, item.type, item.extension || '');
+      const isDir = item.type === 'dir';
+      const date = item.modified ? new Date(item.modified).toLocaleDateString('es', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+      rows.push(`
+        <div class="file-row ${isDir ? 'file-row-dir' : 'file-row-file'}" 
+             data-path="${item.path}" 
+             data-type="${item.type}"
+             title="${item.name}">
+          <span class="file-icon">${icon}</span>
+          <span class="file-name">${item.name}</span>
+          <span class="file-size">${item.sizeFormatted || ''}</span>
+          <span class="file-date">${date}</span>
+        </div>`);
+    });
+
+    filesList.innerHTML = rows.join('');
+
+    // Click: navegar en carpetas
+    filesList.querySelectorAll('.file-row[data-type="dir"], .file-row-back').forEach(el => {
+      el.addEventListener('click', () => loadFiles(el.dataset.path));
+    });
+  }
+
   init();
 });
+

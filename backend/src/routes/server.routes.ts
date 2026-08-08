@@ -20,17 +20,44 @@ interface CreateServerBody {
   port?: number;
 }
 
+interface FilesQuery {
+  path?: string;
+}
+
+// ─── Helper: format bytes ─────────────────────────────────────────────────────
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const k = 1024;
+  const sizes = ["B", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${(bytes / Math.pow(k, i)).toFixed(1)} ${sizes[i]}`;
+}
+
+// ─── Helper: check if world exists ───────────────────────────────────────────
+
+async function checkWorldExists(serverPath: string, worldName = "world"): Promise<boolean> {
+  try {
+    await fs.access(path.join(serverPath, worldName));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function registerServerRoutes(app: FastifyInstance): Promise<void> {
   // List all servers
   app.get("/", async () => {
     const servers = await prisma.server.findMany();
-    const result = servers.map(s => {
+    const result = await Promise.all(servers.map(async s => {
       const service = serverManager.getServiceById(s.id);
+      const worldExists = await checkWorldExists(s.path);
       return {
         ...s,
+        worldExists,
         status: service ? service.getStatus() : { status: "OFFLINE", players: 0, maxPlayers: 20, uptime: 0 }
       };
-    });
+    }));
     return { servers: result };
   });
 
@@ -103,7 +130,22 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
   }
 
   app.get<{ Params: { id: string } }>("/:id/status", async (request, reply) => {
-    return withService(request.params.id, reply, async (service) => service.getStatus());
+    const id = parseInt(request.params.id, 10);
+    const server = await prisma.server.findUnique({ where: { id } });
+    if (!server) return reply.code(404).send({ error: "Server not found" });
+
+    const service = serverManager.getService({
+      id: server.id,
+      name: server.name,
+      directory: server.path,
+      port: server.port,
+      memory: server.memory
+    });
+
+    const status = service.getStatus();
+    const worldExists = await checkWorldExists(server.path);
+
+    return { ...status, worldExists };
   });
 
   app.post<{ Params: { id: string } }>("/:id/start", async (request, reply) => {
@@ -131,5 +173,82 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
       return reply.code(400).send({ error: "COMMAND_REJECTED", message: "String command required" });
     }
     return withService(request.params.id, reply, async (service) => service.sendCommand(command));
+  });
+
+  // ── File Browser ──────────────────────────────────────────────────────────
+  app.get<{ Params: { id: string }, Querystring: FilesQuery }>("/:id/files", async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const server = await prisma.server.findUnique({ where: { id } });
+    if (!server) return reply.code(404).send({ error: "Server not found" });
+
+    const serverRoot = server.path;
+    const requestedRelPath = request.query.path ?? ".";
+
+    // Seguridad: resolver y asegurar que la ruta queda dentro del directorio del servidor
+    const resolvedPath = path.resolve(serverRoot, requestedRelPath);
+    if (!resolvedPath.startsWith(path.resolve(serverRoot))) {
+      return reply.code(403).send({ error: "Access denied: path traversal detected" });
+    }
+
+    try {
+      const stat = await fs.stat(resolvedPath);
+      if (!stat.isDirectory()) {
+        return reply.code(400).send({ error: "Path is not a directory" });
+      }
+
+      const entries = await fs.readdir(resolvedPath, { withFileTypes: true });
+
+      const items = await Promise.all(
+        entries.map(async (entry) => {
+          const fullPath = path.join(resolvedPath, entry.name);
+          const relPath = path.relative(serverRoot, fullPath).replace(/\\/g, "/");
+          let size = 0;
+          let modified = "";
+          try {
+            const s = await fs.stat(fullPath);
+            size = s.size;
+            modified = s.mtime.toISOString();
+          } catch { }
+          return {
+            name: entry.name,
+            path: relPath,
+            type: entry.isDirectory() ? "dir" : "file",
+            size,
+            sizeFormatted: entry.isFile() ? formatBytes(size) : null,
+            modified,
+            extension: entry.isFile() ? path.extname(entry.name).toLowerCase() : null
+          };
+        })
+      );
+
+      // Ordenar: carpetas primero, luego archivos
+      items.sort((a, b) => {
+        if (a.type !== b.type) return a.type === "dir" ? -1 : 1;
+        return a.name.localeCompare(b.name);
+      });
+
+      const relCurrentPath = path.relative(serverRoot, resolvedPath).replace(/\\/g, "/") || ".";
+      const parentPath = resolvedPath === path.resolve(serverRoot)
+        ? null
+        : path.relative(serverRoot, path.dirname(resolvedPath)).replace(/\\/g, "/") || ".";
+
+      return {
+        currentPath: relCurrentPath,
+        parentPath,
+        serverExists: true,
+        items
+      };
+    } catch (e: any) {
+      if (e.code === "ENOENT") {
+        // El directorio del servidor aún no existe (nunca se ha iniciado)
+        return {
+          currentPath: ".",
+          parentPath: null,
+          serverExists: false,
+          items: []
+        };
+      }
+      throw e;
+    }
   });
 }
