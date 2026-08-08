@@ -1,112 +1,96 @@
-# Minecraft Manager
+# 🎮 Minecraft Manager - Cloud Edition
 
-Aplicacion web para administrar un servidor Minecraft Paper desde un backend Node.js.
+Una aplicación web completa para administrar tu propio servidor de Minecraft (Paper/Purpur) de manera **100% gratuita** utilizando el nivel gratuito de Render, apoyado por TiDB para la base de datos de usuarios y Cloudflare R2 para almacenamiento persistente de mundos.
 
-Esta primera fase deja listo el nucleo del proyecto:
+![Minecraft Manager Panel](/backend/public/thumbnails/default.jpg)
 
-- Backend Node.js + TypeScript + Fastify.
-- Controlador de Minecraft con `spawn()` para arrancar Paper.
-- Endpoints iniciales para `start`, `stop`, `restart`, `status`, `logs` y `command`.
-- WebSocket basico para logs en tiempo real.
-- Docker con Java 21 y volumen persistente en `minecraft/server`.
+## 🌟 Características Principales
 
-## Estructura
+- **Panel Web Interactivo:** Enciende, reinicia y apaga tu servidor desde un entorno visual moderno.
+- **Consola en Vivo:** Visualiza y envía comandos (`/say`, `/op`, `/time set`) en tiempo real vía WebSockets.
+- **Persistencia en la Nube (S3):** Dado que Render borra los archivos cada vez que se reinicia, este proyecto comprime automáticamente tu mundo y lo sube a **Cloudflare R2** al apagar el servidor. Al encenderlo, lo descarga y lo restaura.
+- **Soporte de Plantillas (`template.zip`):** Permite saltarse la lenta generación de mundos inicial descargando un entorno pre-cargado.
+- **Sistema de Usuarios y Auth:** Registros seguros usando Prisma + MySQL (TiDB).
+- **Túneles TCP (Playit.gg):** Solución integrada para exponer puertos de juego cuando el hosting solo admite HTTP/HTTPS.
 
-```text
-minecraft-manager/
-├── backend/
-├── docker/
-├── minecraft/
-│   ├── backups/
-│   └── server/
-├── scripts/
-├── docker-compose.yml
-└── README.md
-```
+---
 
-## Primer arranque local
+## 🚀 Guía de Instalación desde Cero (Producción)
 
-Instala dependencias:
+Sigue estos 3 pasos para montar tu servidor gratis en la nube:
 
-```powershell
-npm install
-```
+### 1. Base de Datos (TiDB Serverless)
+1. Ve a [TiDB Cloud](https://tidbcloud.com/) y crea un clúster **Serverless** (gratuito).
+2. Selecciona **MySQL** como motor.
+3. Genera una contraseña y haz clic en **Connect**.
+4. Copia tu Cadena de Conexión (Connection String), que se verá similar a:
+   `mysql://<user>:<password>@gateway01.us-west-2.prod.aws.tidbcloud.com:4000/minecraft_proyect_pro?sslaccept=strict`
 
-Descarga Paper:
+### 2. Almacenamiento S3 (Cloudflare R2)
+1. Crea una cuenta en [Cloudflare](https://dash.cloudflare.com/) y dirígete a **R2 Object Storage**.
+2. Crea un nuevo bucket llamado `minecraft-backups`.
+3. Anota el **S3 API URL** del bucket (este será tu `S3_ENDPOINT`).
+4. Ve a **Manage R2 API Tokens** y crea un nuevo token con permisos de **Object Read & Write**.
+5. Copia el **Access Key ID** y el **Secret Access Key**.
 
-```powershell
-npm run minecraft:download
-```
+### 3. Despliegue en Render
+1. Haz un Fork o sube este repositorio a tu propio GitHub.
+2. Ve a [Render.com](https://render.com/), crea un nuevo **Web Service** y conéctalo a tu repositorio.
+3. El archivo `render.yaml` incluido configurará automáticamente el entorno de Node.js + Java.
+4. En la pestaña **Environment** de tu servicio en Render, debes agregar **manualmente** estas 5 variables de entorno usando los datos de los pasos anteriores:
 
-Acepta la EULA de Minecraft editando `minecraft/server/eula.txt`:
+| Variable | Descripción (Ejemplo) |
+|---|---|
+| `DATABASE_URL` | `mysql://...` (Tu conexión de TiDB) |
+| `S3_ENDPOINT` | `https://<id>.r2.cloudflarestorage.com` |
+| `S3_BUCKET` | `minecraft-backups` |
+| `S3_ACCESS_KEY` | Tu Access Key de Cloudflare |
+| `S3_SECRET_KEY` | Tu Secret Key de Cloudflare |
 
-```text
-eula=true
-```
+5. Despliega el proyecto. Cuando termine, abre la URL proporcionada por Render, créate una cuenta y ¡accede a tu panel!
 
-Arranca el backend:
+---
 
-```powershell
-npm run dev
-```
+## ⚡ Truco: Arranque Instantáneo con `template.zip`
 
-Enciende Minecraft:
+El motor de Minecraft tarda bastante en descargar archivos base y generar un nuevo mundo por primera vez (sobre todo en el plan gratuito de Render). Para saltarte esto:
 
-```powershell
-Invoke-RestMethod -Method Post http://localhost:3000/api/server/start
-```
+1. Crea un servidor local en tu PC, enciéndelo para que genere el mapa y los archivos (o usa un servidor que ya tengas).
+2. Selecciona todos los archivos del servidor (donde está `server.properties`, la carpeta `world`, etc.) y **comprímelos en un archivo llamado exactamente `template.zip`**.
+3. Sube ese archivo manualmente a la raíz de tu bucket en Cloudflare R2.
+4. La próxima vez que inicies un servidor nuevo en el panel de Render, el sistema descargará el `template.zip`, lo descomprimirá y arrancará en unos cuantos segundos.
 
-Consulta el estado:
+---
 
-```powershell
-Invoke-RestMethod http://localhost:3000/api/server/status
-```
+## 💻 Desarrollo Local
 
-Envia un comando a la consola de Minecraft:
+Si deseas probar o modificar el código en tu propia computadora:
 
-```powershell
-Invoke-RestMethod -Method Post http://localhost:3000/api/server/command `
-  -ContentType 'application/json' `
-  -Body '{"command":"say Hola desde Minecraft Manager"}'
-```
+1. Clona el repositorio e instala dependencias:
+   ```bash
+   npm install
+   ```
 
-Apaga Minecraft:
+2. Crea tu archivo `.env` basado en `.env.example`:
+   ```bash
+   cp .env.example .env
+   ```
+   Rellena tus credenciales de TiDB y S3.
 
-```powershell
-Invoke-RestMethod -Method Post http://localhost:3000/api/server/stop
-```
+3. Instala y sincroniza la base de datos con Prisma:
+   ```bash
+   cd backend
+   npx prisma db push
+   npx prisma generate
+   cd ..
+   ```
 
-## Docker
+4. Arranca el entorno de desarrollo:
+   ```bash
+   npm run dev
+   ```
 
-Tambien puedes ejecutar el controlador en Docker:
+5. Entra a `http://localhost:3000` en tu navegador.
 
-```powershell
-npm run minecraft:download
-docker compose up --build
-```
-
-El backend queda en `http://localhost:3000` y Minecraft escucha en `localhost:25565`.
-
-## Endpoints iniciales
-
-```text
-GET  /health
-GET  /api/server
-GET  /api/server/status
-POST /api/server/start
-POST /api/server/stop
-POST /api/server/restart
-GET  /api/server/logs
-POST /api/server/command
-WS   /ws/logs
-```
-
-## Siguiente fase
-
-El siguiente paso natural es probar que Paper arranca correctamente y despues ampliar el backend con backups manuales seguros:
-
-1. `save-all`
-2. detener o bloquear escritura del mundo
-3. comprimir `minecraft/server/world`
-4. guardar en `minecraft/backups`
-5. registrar el evento
+---
+*Desarrollado con ❤️ usando Node.js, Fastify y Prisma.*
