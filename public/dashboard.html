@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <script>!function(){var t=localStorage.getItem("mc-theme")||"dark";document.documentElement.dataset.theme=t;document.documentElement.classList.add("no-transition")}();</script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard - Minecraft Manager</title>
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/js/components/index.js"></script>
+  <script type="module" src="/js/components/UISidebar.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    window.addEventListener('load', () => {
+      const loader = document.getElementById('initial-loader');
+      if (loader) {
+        loader.classList.add('fade-out');
+        setTimeout(() => loader.remove(), 300);
+      }
+    });
+  </script>
+  <script type="module" src="/js/components/UIThemeToggle.js"></script>
+</head>
+<body>
+  <div id="initial-loader" class="initial-loader">
+    <div class="loader-spinner"></div>
+    <div class="text">SINTONIZANDO SERVIDORES...</div>
+  </div>
+
+  <!-- Sidebar Component -->
+  <ui-sidebar type="main" active="dashboard"></ui-sidebar>
+
+  <!-- Content -->
+  <div class="content" id="dashboard-view">
+    <div class="header">
+      <h2>Mis Servidores</h2>
+      <ui-button variant="success" id="btn-show-new-server" style="width: auto;">
+        <i data-lucide="plus"></i>
+        Nuevo Servidor
+      </ui-button>
+    </div>
+    <ui-table>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Nombre</th>
+            <th>Estado</th>
+            <th>ID</th>
+            <th>Puerto</th>
+            <th>Memoria</th>
+            <th>Jugadores</th>
+            <th style="text-align: right;">Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="servers-list">
+          <!-- Los servidores se cargarán aquí -->
+        </tbody>
+      </table>
+    </ui-table>
+  </div>
+
+  <!-- Modal para Nuevo Servidor -->
+  <ui-modal id="new-server-modal" title="Crear Nuevo Servidor" style="display: none;">
+    <div>
+      <label>Nombre:</label>
+      <ui-input id="new-server-name" placeholder="Ej. MiServidorSurvival"></ui-input>
+      <label>Memoria (Ej. 2G, 4G):</label>
+      <ui-input id="new-server-memory" value="2G"></ui-input>
+      <label>Puerto (Opcional):</label>
+      <ui-input type="number" id="new-server-port" placeholder="Automático"></ui-input>
+      
+      <div class="button-group" style="margin-top: 15px; flex-direction: row; gap: 10px;">
+        <ui-button variant="secondary" id="btn-cancel-new-server">Cancelar</ui-button>
+        <ui-button variant="success" id="btn-create-server">Crear Servidor</ui-button>
+      </div>
+    </div>
+  </ui-modal>
+
+  <script type="module" src="/js/pages/dashboard.js"></script>
+</body>
+</html>

@@ -2,15 +2,19 @@ FROM eclipse-temurin:21-jre AS java-base
 
 FROM node:22-bookworm-slim AS build
 
-WORKDIR /app/backend
-COPY backend/package*.json ./
+WORKDIR /app
+COPY package*.json ./
 # Copiar prisma antes de instalar para que el postinstall genere el cliente
-COPY backend/prisma ./prisma
+COPY prisma ./prisma
 RUN npm install
 RUN npx prisma generate
 
-COPY backend/tsconfig.json ./
-COPY backend/src ./src
+COPY tsconfig.json ./
+COPY app ./app
+COPY bootstrap ./bootstrap
+COPY config ./config
+COPY routes ./routes
+COPY server.ts ./
 RUN npm run build
 
 FROM node:22-bookworm-slim AS runtime
@@ -36,13 +40,13 @@ WORKDIR /app
 COPY scripts ./scripts
 RUN chmod +x ./scripts/start-render.sh
 
-WORKDIR /app/backend
-COPY backend/package*.json ./
-COPY backend/prisma ./prisma
+WORKDIR /app
+COPY package*.json ./
+COPY prisma ./prisma
 RUN npm install --omit=dev && npx --yes prisma generate
 
-COPY --from=build /app/backend/dist ./dist
-COPY backend/public ./public
+COPY --from=build /app/dist ./dist
+COPY public ./public
 
 EXPOSE 3000 25565
 CMD ["/app/scripts/start-render.sh"]

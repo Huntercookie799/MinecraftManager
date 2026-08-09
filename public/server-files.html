@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <script>!function(){var t=localStorage.getItem("mc-theme")||"dark";document.documentElement.dataset.theme=t;document.documentElement.classList.add("no-transition")}();</script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Archivos del Servidor - Minecraft Manager</title>
+  <meta name="description" content="Gestiona los archivos de tu servidor de Minecraft.">
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/js/components/index.js"></script>
+  <script type="module" src="/js/components/UISidebar.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    window.addEventListener('load', () => {
+      const loader = document.getElementById('initial-loader');
+      if (loader) {
+        loader.classList.add('fade-out');
+        setTimeout(() => loader.remove(), 300);
+      }
+    });
+  </script>
+  <script type="module" src="/js/components/UIThemeToggle.js"></script>
+</head>
+<body>
+  <div id="initial-loader" class="initial-loader">
+    <div class="loader-spinner"></div>
+    <div class="text">CARGANDO ARCHIVOS...</div>
+  </div>
+
+  <!-- Sidebar Component -->
+  <ui-sidebar type="main" active="dashboard"></ui-sidebar>
+  <ui-sidebar type="server" active="files"></ui-sidebar>
+
+  <!-- Content -->
+  <div class="content" id="app-container">
+    
+    <!-- Header General -->
+    <div class="header">
+      <div class="server-title">
+        <h2 id="current-server-name">Cargando...</h2>
+        <p id="current-server-info">Puerto: -- | RAM: --</p>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+        <!-- World Exists Indicator -->
+        <div id="world-exists-badge" class="world-exists-badge" style="display:none;">
+          <span id="world-exists-icon">🌍</span>
+          <span id="world-exists-label">Mundo generado</span>
+        </div>
+        <!-- World Time Indicator -->
+        <div id="world-time-indicator" class="world-time-badge" style="display: none;">
+          <div class="time-icon-wrap" id="time-icon-wrap">
+            <span class="time-icon" id="time-icon">☀️</span>
+          </div>
+          <div class="time-info">
+            <span class="time-label" id="time-label">Día</span>
+            <span class="time-value" id="time-value">06:00</span>
+          </div>
+        </div>
+        <div id="status-badge" class="status-badge offline">
+          <div class="dot"></div>
+          <span id="status-text" class="text">OFFLINE</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Vista: Archivos -->
+    <div id="view-files" class="tab-content active" style="flex: 1; display: flex;">
+      <div class="card" style="flex: 1;">
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
+          <div style="display: flex; gap: 10px; align-items: center;">
+            <h3 style="margin: 0; padding: 0; border: none; display: flex; align-items: center; gap: 10px;">
+              <i data-lucide="folder-open" style="width:20px;height:20px;"></i>
+              Archivos del Servidor
+            </h3>
+            <div class="storage-toggle" style="display: flex; background: #000; border: 1px solid var(--border-color); border-radius: var(--border-radius); padding: 2px;">
+              <ui-button variant="toggle" accent="success" active id="btn-storage-local">LOCAL</ui-button>
+              <ui-button variant="toggle" accent="info" id="btn-storage-r2">CLOUDFLARE R2</ui-button>
+            </div>
+          </div>
+          <div id="files-breadcrumb" class="files-breadcrumb">
+            <span class="breadcrumb-item breadcrumb-root" id="breadcrumb-root">📁 Raíz</span>
+          </div>
+        </div>
+        <div id="files-list" class="files-list">
+          <div class="files-loading" id="files-loading">
+            <div class="files-spinner"></div>
+            <p>Cargando archivos...</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script type="module" src="/js/pages/server-files.js"></script>
+</body>
+</html>

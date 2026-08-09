@@ -1,0 +1,23 @@
+model MinecraftAccount {
+  id        Int      @id @default(autoincrement())
+  nametag   String
+  avatar    String?
+  skin      String?
+  userId    Int
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+}
+
+model World {
+  id        Int      @id @default(autoincrement())
+  name      String
+  path      String
+  isActive  Boolean  @default(false)
+  isBackup  Boolean  @default(false)
+  thumbnail String?
+  serverId  Int
+  server    Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+
+  @@unique([serverId, name])
+}

@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <script>!function(){var t=localStorage.getItem("mc-theme")||"dark";document.documentElement.dataset.theme=t;document.documentElement.classList.add("no-transition")}();</script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Jugadores del Servidor - Minecraft Manager</title>
+  <meta name="description" content="Gestiona los jugadores en línea de tu servidor de Minecraft.">
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/js/components/index.js"></script>
+  <script type="module" src="/js/components/UISidebar.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    window.addEventListener('load', () => {
+      const loader = document.getElementById('initial-loader');
+      if (loader) {
+        loader.classList.add('fade-out');
+        setTimeout(() => loader.remove(), 300);
+      }
+    });
+  </script>
+  <script type="module" src="/js/components/UIThemeToggle.js"></script>
+</head>
+<body>
+  <div id="initial-loader" class="initial-loader">
+    <div class="loader-spinner"></div>
+    <div class="text">CARGANDO JUGADORES...</div>
+  </div>
+
+  <!-- Sidebar Component -->
+  <ui-sidebar type="main" active="dashboard"></ui-sidebar>
+  <ui-sidebar type="server" active="players"></ui-sidebar>
+
+  <!-- Content -->
+  <div class="content" id="app-container">
+    
+    <!-- Header General -->
+    <div class="header">
+      <div class="server-title">
+        <h2 id="current-server-name">Cargando...</h2>
+        <p id="current-server-info">Puerto: -- | RAM: --</p>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+        <!-- World Exists Indicator -->
+        <div id="world-exists-badge" class="world-exists-badge" style="display:none;">
+          <span id="world-exists-icon">🌍</span>
+          <span id="world-exists-label">Mundo generado</span>
+        </div>
+        <!-- World Time Indicator -->
+        <div id="world-time-indicator" class="world-time-badge" style="display: none;">
+          <div class="time-icon-wrap" id="time-icon-wrap">
+            <span class="time-icon" id="time-icon">☀️</span>
+          </div>
+          <div class="time-info">
+            <span class="time-label" id="time-label">Día</span>
+            <span class="time-value" id="time-value">06:00</span>
+          </div>
+        </div>
+        <div id="status-badge" class="status-badge offline">
+          <div class="dot"></div>
+          <span id="status-text" class="text">OFFLINE</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Vista: Jugadores -->
+    <div id="view-players" class="tab-content active" style="flex: 1; display: flex;">
+      
+      <!-- Panel de Jugadores en Línea -->
+      <div class="card players-card" id="players-card" style="flex: 1;">
+        <div class="players-card-header">
+          <h3><i data-lucide="users" style="width:20px;height:20px;"></i> Jugadores en Línea</h3>
+          <span class="players-count-badge" id="players-count-badge">0</span>
+        </div>
+        <div id="players-list" class="players-list">
+          <div class="players-empty" id="players-empty">
+            <span class="players-empty-icon">🎮</span>
+            <p>No hay jugadores en línea</p>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script type="module" src="/js/pages/server-players.js"></script>
+</body>
+</html>

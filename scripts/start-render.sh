@@ -25,11 +25,11 @@ PLAYIT_PID=$!
 
 # Volver al directorio de la app y arrancar Node
 echo "Actualizando esquema de Base de Datos..."
-cd /app/backend
+cd /app
 npx --yes prisma db push --skip-generate
 
 echo "Iniciando Backend Node.js..."
-node dist/index.js
+node dist/server.js
 
 # Si Node.js se detiene, matar playit
 kill $PLAYIT_PID

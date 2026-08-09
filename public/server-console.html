@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <script>!function(){var t=localStorage.getItem("mc-theme")||"dark";document.documentElement.dataset.theme=t;document.documentElement.classList.add("no-transition")}();</script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Consola del Servidor - Minecraft Manager</title>
+  <meta name="description" content="Gestiona la consola y jugadores en línea de tu servidor de Minecraft.">
+  <link rel="stylesheet" href="/style.css">
+  <script type="module" src="/js/components/index.js"></script>
+  <script type="module" src="/js/components/UISidebar.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    window.addEventListener('load', () => {
+      const loader = document.getElementById('initial-loader');
+      if (loader) {
+        loader.classList.add('fade-out');
+        setTimeout(() => loader.remove(), 300);
+      }
+    });
+  </script>
+  <script type="module" src="/js/components/UIThemeToggle.js"></script>
+</head>
+<body>
+  <div id="initial-loader" class="initial-loader">
+    <div class="loader-spinner"></div>
+    <div class="text">CARGANDO CONSOLA...</div>
+  </div>
+
+  <!-- Sidebar Component -->
+  <ui-sidebar type="main" active="dashboard"></ui-sidebar>
+  <ui-sidebar type="server" active="console"></ui-sidebar>
+
+  <!-- Content -->
+  <div class="content" id="app-container">
+    
+    <!-- Header General -->
+    <div class="header">
+      <div class="server-title">
+        <h2 id="current-server-name">Cargando...</h2>
+        <p id="current-server-info">Puerto: -- | RAM: --</p>
+      </div>
+      <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
+        <!-- World Exists Indicator -->
+        <div id="world-exists-badge" class="world-exists-badge" style="display:none;">
+          <span id="world-exists-icon">🌍</span>
+          <span id="world-exists-label">Mundo generado</span>
+        </div>
+        <!-- World Time Indicator -->
+        <div id="world-time-indicator" class="world-time-badge" style="display: none;">
+          <div class="time-icon-wrap" id="time-icon-wrap">
+            <span class="time-icon" id="time-icon">☀️</span>
+          </div>
+          <div class="time-info">
+            <span class="time-label" id="time-label">Día</span>
+            <span class="time-value" id="time-value">06:00</span>
+          </div>
+        </div>
+        <div id="status-badge" class="status-badge offline">
+          <div class="dot"></div>
+          <span id="status-text" class="text">OFFLINE</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Vista: Consola -->
+    <div id="view-console" class="tab-content active" style="flex: 1; display: flex;">
+      
+      <!-- Consola -->
+      <div class="card console-card" style="flex: 1; display: flex; flex-direction: column;">
+          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
+            <h3 style="margin: 0; padding: 0; border: none; display: flex; align-items: center; gap: 10px;">
+              <i data-lucide="terminal" style="width:20px;height:20px;"></i>
+              Terminal del Servidor
+            </h3>
+            <div class="storage-toggle" style="display: flex; background: #000; border: 1px solid var(--border-color); border-radius: var(--border-radius); padding: 2px;">
+              <ui-button variant="toggle" accent="success" active id="btn-console-live">EN VIVO</ui-button>
+              <ui-button variant="toggle" accent="warning" id="btn-console-history">HISTORIAL (BD)</ui-button>
+            </div>
+            <div class="ws-status-badge" id="ws-status-badge">
+              <span class="ws-dot ws-dot-off" id="ws-status-dot"></span>
+              <span class="ws-status-label" id="ws-status-label">Conectando...</span>
+            </div>
+          </div>
+          <div class="terminal-container" id="terminal-container">
+            <div id="terminal-output" class="terminal"></div>
+          </div>
+          
+          <div class="history-container" id="history-container" style="display: none;">
+            <div id="history-loading" class="files-loading" style="display: none; padding: 40px 0;">
+              <div class="files-spinner"></div>
+              <p>Cargando historial...</p>
+            </div>
+            <div id="history-table-wrapper" style="overflow-x: auto;">
+              <!-- Table will be injected here -->
+            </div>
+            <div id="history-pagination" style="display: flex; justify-content: center; gap: 15px; align-items: center; margin-top: 15px;">
+              <ui-button variant="secondary" size="sm" id="btn-history-prev" disabled>Anterior</ui-button>
+              <span id="history-page-info" style="font-family: var(--font-mono); font-size: 0.9rem; color: var(--text-dim);">Página 1 / 1</span>
+              <ui-button variant="secondary" size="sm" id="btn-history-next" disabled>Siguiente</ui-button>
+            </div>
+          </div>
+          
+          <div class="command-input">
+            <ui-input variant="command" id="command-input" placeholder="Escribe un comando (ej. /say Hola)" disabled></ui-input>
+            <ui-button variant="blue" id="btn-send-command" disabled style="width: auto;"><i data-lucide="send"></i> Enviar</ui-button>
+          </div>
+        </div>
+      
+    </div>
+  </div>
+
+  <script type="module" src="/js/pages/server-console.js"></script>
+</body>
+</html>

@@ -1,0 +1,21 @@
+model Server {
+  id        Int         @id @default(autoincrement())
+  name      String      @unique
+  port      Int         @unique
+  memory    String      @default("2G")
+  path      String      @unique
+  createdAt DateTime    @default(now())
+  worlds    World[]
+  logs      ServerLog[]
+}
+
+model ServerLog {
+  id        Int      @id @default(autoincrement())
+  serverId  Int
+  server    Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  level     String   @default("INFO")
+  message   String   @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([serverId, createdAt])
+}

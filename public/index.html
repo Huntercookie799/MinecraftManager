@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <script>!function(){var t=localStorage.getItem("mc-theme")||"dark";document.documentElement.dataset.theme=t;document.documentElement.classList.add("no-transition")}();</script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Minecraft Manager - Acceso</title>
+  <meta name="description" content="Panel de administración de servidores Minecraft. Inicia sesión para acceder al control total de tu servidor.">
+  <link rel="stylesheet" href="/style.css">
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    window.addEventListener('load', () => {
+      const loader = document.getElementById('initial-loader');
+      if (loader) {
+        loader.classList.add('fade-out');
+        setTimeout(() => loader.remove(), 300);
+      }
+      if (window.lucide) lucide.createIcons();
+    });
+  </script>
+  <script type="module" src="/js/components/index.js"></script>
+  <script type="module" src="/js/components/UIThemeToggle.js"></script>
+</head>
+<body class="auth-body">
+  <div id="initial-loader" class="initial-loader">
+    <div class="loader-spinner"></div>
+    <div class="text">INICIALIZANDO CONSOLA...</div>
+  </div>
+
+  <div class="auth-layout">
+    <!-- Panel Izquierdo: Decorativo -->
+    <div class="auth-panel-left">
+      <div class="auth-brand">
+        <div class="auth-brand-icon">
+          <i data-lucide="pickaxe"></i>
+        </div>
+        <h1>MINECRAFT<br><span>MANAGER</span></h1>
+        <p class="auth-brand-sub">CONTROL TOTAL DE TU SERVIDOR</p>
+      </div>
+
+      <div class="auth-stats">
+        <div class="auth-stat">
+          <i data-lucide="activity"></i>
+          <span>MONITOREO EN TIEMPO REAL</span>
+        </div>
+        <div class="auth-stat">
+          <i data-lucide="terminal"></i>
+          <span>CONSOLA INTEGRADA</span>
+        </div>
+        <div class="auth-stat">
+          <i data-lucide="globe"></i>
+          <span>GESTIÓN DE MUNDOS</span>
+        </div>
+        <div class="auth-stat">
+          <i data-lucide="hard-drive"></i>
+          <span>RESPALDOS EN LA NUBE</span>
+        </div>
+      </div>
+
+      <div class="auth-panel-grid" id="auth-grid"></div>
+    </div>
+
+    <!-- Panel Derecho: Formulario -->
+    <div class="auth-panel-right">
+      <div class="auth-form-container">
+
+        <!-- Header del Form (cambia con animación) -->
+        <div class="auth-form-header" id="auth-header">
+          <h2 id="auth-title">INICIAR SESIÓN</h2>
+          <p id="auth-subtitle">Ingresa tus credenciales para acceder al panel</p>
+        </div>
+
+        <!-- Indicador de modo -->
+        <div class="auth-mode-tabs">
+          <ui-button variant="auth-tab" active id="tab-login" onclick="switchMode('login')">
+            <i data-lucide="log-in"></i>
+            Login
+          </ui-button>
+          <ui-button variant="auth-tab" id="tab-register" onclick="switchMode('register')">
+            <i data-lucide="user-plus"></i>
+            Registro
+          </ui-button>
+        </div>
+
+        <!-- Formulario -->
+        <form id="login-form" class="auth-form" autocomplete="off">
+
+          <!-- Campo Usuario -->
+          <div class="auth-field">
+            <label for="username" class="auth-label">
+              <i data-lucide="user"></i>
+              USUARIO
+            </label>
+            <ui-input variant="auth" icon="user" type="text" id="username" placeholder="nombre_de_usuario" required autocomplete="username"></ui-input>
+          </div>
+
+          <!-- Campo Contraseña -->
+          <div class="auth-field">
+            <label for="password" class="auth-label">
+              <i data-lucide="lock"></i>
+              CONTRASEÑA
+            </label>
+            <ui-input variant="auth" icon="lock" type="password" id="password" placeholder="••••••••" required autocomplete="current-password"></ui-input>
+          </div>
+
+          <!-- Error -->
+          <div id="login-error" class="auth-error" style="display:none;">
+            <i data-lucide="alert-triangle"></i>
+            <span id="error-text"></span>
+          </div>
+
+          <!-- Botón submit -->
+          <ui-button variant="auth-submit" type="submit" id="btn-login">
+            <i data-lucide="log-in" id="btn-icon"></i>
+            <span id="btn-text">ENTRAR</span>
+          </ui-button>
+
+        </form>
+
+        <!-- Toggle -->
+        <div class="auth-toggle">
+          <span id="toggle-label">¿No tienes cuenta?</span>
+          <a href="#" id="toggle-register">Regístrate aquí</a>
+        </div>
+
+        <!-- Footer info -->
+        <div class="auth-footer">
+          <i data-lucide="shield-check"></i>
+          <span>Conexión segura · Minecraft Manager v1.0</span>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/js/pages/login.js"></script>
+  <script>
+    // Tabs y modo
+    function switchMode(mode) {
+      const isRegister = mode === 'register';
+      const tabLogin = document.getElementById('tab-login');
+      const tabRegister = document.getElementById('tab-register');
+      const header = document.getElementById('auth-header');
+
+      tabLogin.toggleAttribute('active', !isRegister);
+      tabRegister.toggleAttribute('active', isRegister);
+
+      // Animación: fade out → cambiar contenido → fade in
+      header.classList.remove('auth-header-enter');
+      header.classList.add('auth-header-exit');
+
+      setTimeout(() => {
+        // Actualizar contenido
+        document.getElementById('auth-title').textContent     = isRegister ? 'CREAR CUENTA' : 'INICIAR SESIÓN';
+        document.getElementById('auth-subtitle').textContent  = isRegister
+          ? 'Completa los datos para crear tu acceso'
+          : 'Ingresa tus credenciales para acceder al panel';
+
+        document.getElementById('btn-text').textContent  = isRegister ? 'CREAR CUENTA' : 'ENTRAR';
+        document.getElementById('toggle-label').textContent = isRegister ? '¿Ya tienes cuenta?' : '¿No tienes cuenta?';
+        document.getElementById('toggle-register').textContent = isRegister ? 'Inicia sesión' : 'Regístrate aquí';
+
+        if (window.lucide) lucide.createIcons();
+
+        // Fade in — forzar que el header sea visible
+        header.classList.remove('auth-header-exit');
+        header.style.opacity  = '';
+        header.style.transform = '';
+        header.classList.add('auth-header-enter');
+        setTimeout(() => header.classList.remove('auth-header-enter'), 350);
+      }, 180);
+
+      // Disparar evento para login.js
+      document.dispatchEvent(new CustomEvent('auth-mode-change', { detail: { isRegistering: isRegister } }));
+    }
+
+    // Toggle password visibility
+    document.addEventListener('DOMContentLoaded', () => {
+      // Link de toggle también cambia tabs
+      document.getElementById('toggle-register').addEventListener('click', (e) => {
+        e.preventDefault();
+        const isCurrentlyLogin = document.getElementById('tab-login').hasAttribute('active');
+        switchMode(isCurrentlyLogin ? 'register' : 'login');
+      });
+
+      // ── Efecto hover cuadrícula con Canvas ──
+      const panel = document.querySelector('.auth-panel-left');
+      if (panel) {
+        const CELL   = 40;   // tamaño de celda (igual que en CSS background-size)
+        const RADIUS = 130;  // radio del glow en px
+
+        const canvas = document.createElement('canvas');
+        canvas.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:2;';
+        panel.appendChild(canvas);
+
+        let mouse = { x: -9999, y: -9999 };
+        let raf   = null;
+
+        function resize() {
+          canvas.width  = panel.offsetWidth;
+          canvas.height = panel.offsetHeight;
+        }
+        resize();
+        new ResizeObserver(resize).observe(panel);
+
+        panel.addEventListener('mousemove', (e) => {
+          const rect = panel.getBoundingClientRect();
+          mouse.x = e.clientX - rect.left;
+          mouse.y = e.clientY - rect.top;
+          if (!raf) raf = requestAnimationFrame(draw);
+        });
+
+        panel.addEventListener('mouseleave', () => {
+          mouse = { x: -9999, y: -9999 };
+          if (!raf) raf = requestAnimationFrame(draw);
+        });
+
+        function draw() {
+          raf = null;
+          const ctx  = canvas.getContext('2d');
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+          const cols = Math.ceil(canvas.width  / CELL) + 1;
+          const rows = Math.ceil(canvas.height / CELL) + 1;
+
+          for (let r = 0; r < rows; r++) {
+            for (let c = 0; c < cols; c++) {
+              const cx = c * CELL;
+              const cy = r * CELL;
+              const dx = cx - mouse.x;
+              const dy = cy - mouse.y;
+              const dist = Math.sqrt(dx * dx + dy * dy);
+
+              if (dist < RADIUS) {
+                const t = 1 - dist / RADIUS;
+                // Relleno de la celda
+                ctx.fillStyle = `rgba(85,255,85,${t * 0.18})`;
+                ctx.fillRect(cx + 1, cy + 1, CELL - 2, CELL - 2);
+                // Borde resaltado
+                ctx.strokeStyle = `rgba(85,255,85,${t * 0.55})`;
+                ctx.lineWidth = 1;
+                ctx.strokeRect(cx + 0.5, cy + 0.5, CELL - 1, CELL - 1);
+              }
+            }
+          }
+        }
+      }
+    });
+
+  </script>
+</body>
+</html>

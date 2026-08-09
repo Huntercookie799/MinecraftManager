@@ -59,3 +59,8 @@ Thumbs.db
 *.swp
 *.swo
 
+# ── Configuraciones de IA y Editores ─────────────────────────
+.agents/
+.claude/
+.windsurf/
+skills-lock.json
