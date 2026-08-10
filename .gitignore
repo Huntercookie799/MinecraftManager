@@ -66,8 +66,7 @@ temp_upload.zip
 temp_download.zip
 
 # ── Datos privados de la sesión (Freebuff) ───────────────────
-.freebuff/*
-!.freebuff/run.md
+.freebuff/
 
 # ── Base de datos SQLite ─────────────────────────────────────
 backend/prisma/*.db
