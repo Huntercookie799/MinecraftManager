@@ -47,6 +47,27 @@ backend/public/uploads/*
 !backend/public/uploads/.gitkeep
 backend/public/thumbnails/*
 !backend/public/thumbnails/.gitkeep
+public/uploads/*
+!public/uploads/.gitkeep
+public/thumbnails/*
+!public/thumbnails/.gitkeep
+public/server-icons/*
+!public/server-icons/.gitkeep
+
+# ── Config generada por el servidor de Minecraft (privada) ──
+minecraft/server/commands.yml
+minecraft/server/help.yml
+minecraft/server/permissions.yml
+minecraft/server/purpur.yml
+minecraft/server/version_history.json
+
+# ── Archivos temporales del proceso ──────────────────────────
+temp_upload.zip
+temp_download.zip
+
+# ── Datos privados de la sesión (Freebuff) ───────────────────
+.freebuff/*
+!.freebuff/run.md
 
 # ── Base de datos SQLite ─────────────────────────────────────
 backend/prisma/*.db
@@ -59,9 +80,19 @@ backend/prisma/*.db-shm
 Thumbs.db
 *.swp
 *.swo
+.vscode/
+.idea/
+.vs/
+*.code-workspace
 
 # ── Configuraciones de IA y Editores ─────────────────────────
 .agents/
 .claude/
 .windsurf/
+.cursor/
+.aider/
+.continue/
+.gemini/
+.codex/
 skills-lock.json
+repomix-output.xml
