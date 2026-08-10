@@ -7,6 +7,7 @@ import AdmZip from "adm-zip";
 import { Jimp } from "jimp";
 import { prisma } from "../../Models/prisma";
 import { serverManager } from "../../Services/ServerManager";
+import { S3SyncService } from "../../Services/S3SyncService";
 
 interface ServerParams {
   serverId: string;
@@ -64,6 +65,33 @@ export async function registerWorldsRoutes(app: FastifyInstance): Promise<void> 
     const world = await prisma.world.create({
       data: { name, path: name, isActive, serverId: server.id }
     });
+
+    // ── Generar los archivos del mundo y subirlos directamente ──
+    // Crea la estructura de carpetas (world, world_nether, world_the_end).
+    // El servidor completa la generación real del mundo al arrancar sobre ellas.
+    try {
+      const worldsBackupDir = path.join(server.path, "worlds_backup");
+      const bases = isActive ? [server.path] : [path.join(worldsBackupDir, name)];
+
+      for (const base of bases) {
+        for (const folder of ["world", "world_nether", "world_the_end"]) {
+          await fs.mkdir(path.join(base, folder), { recursive: true });
+        }
+      }
+
+      // Subir el backup del mundo nuevo a S3 de inmediato
+      const s3 = new S3SyncService();
+      if (s3.isConfigured) {
+        const uploadSource = isActive ? server.path : path.join(worldsBackupDir, name);
+        await s3.zipAndUploadFolder(
+          uploadSource,
+          `${server.id}/worlds/${name}.zip`,
+          (msg) => app.log.info(msg)
+        );
+      }
+    } catch (e: any) {
+      app.log.error("Failed to generate world files or upload to S3", e);
+    }
 
     return { world };
   });

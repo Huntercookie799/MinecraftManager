@@ -4,6 +4,17 @@ import { ServerModel } from '../models/Server.js';
 import '../components/index.js';
 import { ServerHeader } from './server-header.js';
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function escapeHtml(str) {
+  return String(str ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -17,17 +28,47 @@ document.addEventListener('DOMContentLoaded', async () => {
   const commandInput = DOM.get('command-input');
   const btnSendCommand = DOM.get('btn-send-command');
   
+  // Elementos del spinner
+  const terminalSpinner = DOM.get('terminal-spinner');
+  const spinnerMessage = DOM.get('spinner-message');
+  
   // UI Toggles
   const btnLive = DOM.get('btn-console-live');
   const btnHistory = DOM.get('btn-console-history');
   const terminalContainer = DOM.get('terminal-container');
   const historyContainer = DOM.get('history-container');
+  const historySpinner = DOM.get('history-spinner');
+  const historyTableWrapper = DOM.get('history-table-wrapper');
   
   // History State
   let historyPage = 1;
   let historyLimit = 100;
   
   let currentWs = null;
+  let isFirstLoad = true;
+
+  // ─── Control del Spinner ──────────────────────────────────────────────────
+  
+  function showSpinner(message = 'CARGANDO LOGS...', subMessage = 'Esperando conexión con el servidor') {
+    if (terminalSpinner) {
+      terminalSpinner.classList.add('active');
+      if (spinnerMessage) spinnerMessage.textContent = message;
+      const subText = terminalSpinner.querySelector('.terminal-spinner-subtext');
+      if (subText) subText.textContent = subMessage;
+    }
+  }
+  
+  function hideSpinner() {
+    if (terminalSpinner) {
+      terminalSpinner.classList.remove('active');
+    }
+  }
+  
+  function updateSpinnerMessage(message, subMessage) {
+    if (spinnerMessage) spinnerMessage.textContent = message;
+    const subText = terminalSpinner?.querySelector('.terminal-spinner-subtext');
+    if (subText && subMessage) subText.textContent = subMessage;
+  }
 
   // ─── Events from Header ────────────────────────────────────────────────────
 
@@ -35,10 +76,30 @@ document.addEventListener('DOMContentLoaded', async () => {
     const statusObj = e.detail;
     const currentStatus = statusObj.status;
 
-    if (currentStatus === 'ONLINE') {
+    // Mostrar/ocultar banner de inicio
+    const startingBanner = DOM.get('console-starting');
+    if (startingBanner) {
+      startingBanner.classList.toggle('active', currentStatus === 'STARTING');
+    }
+
+    // Control del spinner según el estado
+    if (currentStatus === 'STARTING') {
+      showSpinner('INICIANDO SERVIDOR...', 'Por favor espera mientras el servidor arranca');
+    } else if (currentStatus === 'ONLINE') {
+      // Si es la primera vez que se conecta, mostrar spinner brevemente
+      if (isFirstLoad) {
+        showSpinner('CONECTANDO...', 'Estableciendo conexión con el servidor');
+        setTimeout(() => {
+          hideSpinner();
+          isFirstLoad = false;
+        }, 1000);
+      } else {
+        hideSpinner();
+      }
       commandInput.removeAttribute('disabled');
       btnSendCommand.removeAttribute('disabled');
-    } else {
+    } else if (currentStatus === 'OFFLINE') {
+      showSpinner('SERVIDOR OFFLINE', 'El servidor no está disponible');
       commandInput.setAttribute('disabled', 'true');
       btnSendCommand.setAttribute('disabled', 'true');
     }
@@ -54,8 +115,29 @@ document.addEventListener('DOMContentLoaded', async () => {
   async function sendCommand() {
     const cmd = commandInput.value.trim();
     if (!cmd) return;
-    await ServerModel.sendCommand(serverId, cmd);
-    commandInput.value = '';
+    
+    // Mostrar spinner mientras se ejecuta el comando
+    showSpinner('EJECUTANDO COMANDO...', `> ${cmd}`);
+    commandInput.setAttribute('disabled', 'true');
+    btnSendCommand.setAttribute('disabled', 'true');
+    
+    try {
+      await ServerModel.sendCommand(serverId, cmd);
+      commandInput.value = '';
+      
+      // Esperar un momento para ver el spinner
+      await new Promise(resolve => setTimeout(resolve, 500));
+    } catch (error) {
+      console.error('Error al ejecutar comando:', error);
+    } finally {
+      // Ocultar spinner y rehabilitar input si el servidor está online
+      hideSpinner();
+      const statusBadge = DOM.get('status-badge');
+      if (statusBadge && statusBadge.classList.contains('online')) {
+        commandInput.removeAttribute('disabled');
+        btnSendCommand.removeAttribute('disabled');
+      }
+    }
   }
   
   // ─── UI Toggles & History ──────────────────────────────────────────────────
@@ -66,6 +148,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     terminalContainer.style.display = 'block';
     historyContainer.style.display = 'none';
+    
+    // Si no hay logs, mostrar spinner de carga
+    if (terminalOutput.childNodes.length === 0) {
+      showSpinner('ESPERANDO LOGS...', 'Conectando al servidor...');
+    }
   });
 
   DOM.on(btnHistory, 'click', () => {
@@ -74,30 +161,32 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     terminalContainer.style.display = 'none';
     historyContainer.style.display = 'block';
+    historyTableWrapper.style.display = 'none';
+    historySpinner.classList.add('active');
 
     loadHistory(1);
   });
 
   async function loadHistory(page) {
     historyPage = page;
-    const tableWrapper = DOM.get('history-table-wrapper');
-    const loading = DOM.get('history-loading');
     const prevBtn = DOM.get('btn-history-prev');
     const nextBtn = DOM.get('btn-history-next');
     const pageInfo = DOM.get('history-page-info');
     
-    if (loading) loading.style.display = 'block';
-    if (tableWrapper) tableWrapper.style.display = 'none';
+    // Mostrar spinner de historial
+    historySpinner.classList.add('active');
+    historyTableWrapper.style.display = 'none';
     prevBtn.setAttribute('disabled', 'true');
     nextBtn.setAttribute('disabled', 'true');
 
     const data = await API.call(`/${serverId}/logs/history?page=${page}&limit=${historyLimit}`, 'GET', null, '/api/server', true);
     
-    if (loading) loading.style.display = 'none';
-    if (tableWrapper) tableWrapper.style.display = 'block';
+    // Ocultar spinner
+    historySpinner.classList.remove('active');
+    historyTableWrapper.style.display = 'block';
 
     if (!data || !data.logs || data.logs.length === 0) {
-      tableWrapper.innerHTML = `
+      historyTableWrapper.innerHTML = `
         <div class="terminal" style="min-height: 200px; display: flex; align-items: center; justify-content: center;">
           <div class="terminal-line info" style="opacity: 0.5; text-align: center;">> No hay historial de logs en la base de datos para este servidor.</div>
         </div>
@@ -131,7 +220,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           <tr>
             <td style="color: var(--text-dim); white-space: nowrap;">${date}</td>
             <td style="color: ${levelColor}; font-weight: bold;">${log.level}</td>
-            <td style="font-family: var(--font-mono); font-size: 0.85rem; color: #bbb;">${DOM.escape(log.message)}</td>
+            <td style="font-family: var(--font-mono); font-size: 0.85rem; color: #bbb;">${escapeHtml(log.message)}</td>
           </tr>
       `);
     });
@@ -141,7 +230,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       </table>
     `);
 
-    tableWrapper.innerHTML = rows.join('');
+    historyTableWrapper.innerHTML = rows.join('');
     
     // Pagination logic
     pageInfo.textContent = `Página ${data.page} / ${data.totalPages || 1}`;
@@ -161,10 +250,16 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   let wsReconnectDelay = 2000;
   let wsKeepaliveTimer = null;
+  let logsReceived = false;
 
   function connectWebSocket() {
     if (currentWs) currentWs.close();
     if (wsKeepaliveTimer) clearInterval(wsKeepaliveTimer);
+    
+    // Mostrar spinner mientras se conecta
+    if (!logsReceived) {
+      showSpinner('CONECTANDO AL SERVIDOR...', 'Estableciendo conexión WebSocket');
+    }
     
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${protocol}//${window.location.host}/ws/logs?serverId=${serverId}&token=${API.token}`;
@@ -184,6 +279,13 @@ document.addEventListener('DOMContentLoaded', async () => {
           currentWs.send(JSON.stringify({ type: 'ping' }));
         }
       }, 25_000);
+      
+      // Ocultar spinner después de conectar si ya hay logs
+      if (logsReceived) {
+        hideSpinner();
+      } else {
+        updateSpinnerMessage('CONECTADO', 'Esperando logs del servidor...');
+      }
     };
 
     currentWs.onmessage = (event) => {
@@ -191,10 +293,20 @@ document.addEventListener('DOMContentLoaded', async () => {
         const data = JSON.parse(event.data);
         if (data.type === 'log') {
           const line = data.log ?? data.content;
-          if (line) appendLog(typeof line === 'object' ? line.message : line);
+          if (line) {
+            logsReceived = true;
+            hideSpinner(); // Ocultar spinner cuando llegan logs
+            appendLog(typeof line === 'object' ? line.message : line);
+          }
         } else if (data.type === 'snapshot') {
           if (Array.isArray(data.logs)) {
-            data.logs.forEach((ln) => appendLog(typeof ln === 'object' ? ln.message : ln));
+            // Limpiar terminal y mostrar snapshot
+            terminalOutput.innerHTML = '';
+            data.logs.forEach((ln) => {
+              appendLog(typeof ln === 'object' ? ln.message : ln);
+            });
+            logsReceived = true;
+            hideSpinner(); // Ocultar spinner cuando se recibe el snapshot
           }
         }
       } catch (e) {
@@ -205,6 +317,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     currentWs.onclose = () => {
       if (wsKeepaliveTimer) { clearInterval(wsKeepaliveTimer); wsKeepaliveTimer = null; }
       setWsStatus(false);
+      
+      // Mostrar spinner de reconexión
+      if (logsReceived) {
+        showSpinner('RECONECTANDO...', 'La conexión se ha perdido, reconectando...');
+      }
+      
       setTimeout(connectWebSocket, wsReconnectDelay);
       wsReconnectDelay = Math.min(wsReconnectDelay * 1.5, 30_000);
     };
@@ -212,7 +330,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   function appendLog(line) {
     if (!line) return;
-    
+
     // Quitar el placeholder si existe
     if (terminalOutput.childNodes.length === 1 && terminalOutput.firstChild.textContent.includes('Esperando logs')) {
       terminalOutput.innerHTML = '';
@@ -222,6 +340,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (line.includes('WARN')) div.classList.add('warn');
     else if (line.includes('ERROR') || line.includes('Exception')) div.classList.add('error');
     else if (line.includes('INFO')) div.classList.add('info');
+    else if (line.includes('Done') || line.includes('Started')) div.classList.add('success');
     div.textContent = line;
     terminalOutput.appendChild(div);
     if (terminalOutput.childNodes.length > 500) terminalOutput.removeChild(terminalOutput.firstChild);
@@ -241,5 +360,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
 
+  // Mostrar spinner inicial
+  showSpinner('CARGANDO CONSOLA...', 'Inicializando conexión con el servidor');
+  
   connectWebSocket();
 });

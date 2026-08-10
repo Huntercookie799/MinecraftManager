@@ -20,6 +20,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.lucide.createIcons();
   }
 
+  // ─── Tabs móviles del perfil ────────────────────────────────────────────
+  const profileTabs = document.querySelectorAll('.profile-tab');
+  const profilePanels = document.querySelectorAll('.profile-tab-panel');
+
+  profileTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      profileTabs.forEach(t => t.classList.remove('active'));
+      profilePanels.forEach(p => p.classList.remove('active'));
+      tab.classList.add('active');
+      const panel = DOM.get('tab-panel-' + tab.dataset.tab);
+      if (panel) panel.classList.add('active');
+    });
+  });
+
   // Elementos
   const usernameInput = DOM.get('username');
   const passwordInput = DOM.get('password');
@@ -37,13 +51,16 @@ document.addEventListener('DOMContentLoaded', async () => {
       avatarPreview.src = profile.profilePic;
     }
     
-    // Inicializar SkinView3D
+    // Inicializar SkinView3D (tamaño compacto en móvil para que no se corte)
+    const isMobile = window.innerWidth <= 768;
+    const viewerW = isMobile ? 160 : 250;
+    const viewerH = isMobile ? 224 : 350;
     const skinUrl = profile.mcSkin || 'https://minotar.net/skin/MHF_Steve';
     
     skinViewer = new skinview3d.SkinViewer({
       canvas: document.createElement("canvas"),
-      width: 250,
-      height: 350,
+      width: viewerW,
+      height: viewerH,
       skin: skinUrl
     });
     
@@ -173,22 +190,25 @@ document.addEventListener('DOMContentLoaded', async () => {
       card.style = 'display:flex; flex-direction:column; gap:15px; padding:15px;';
       card.innerHTML = `
         <h4>${account.nametag}</h4>
-        <div style="display:flex; gap:15px; align-items:center;">
-          <img id="avatar-${account.id}" src="${account.avatar || '/default-avatar.png'}" alt="Avatar" style="width:60px;height:60px;border-radius:50%;object-fit:cover;">
-          <ui-button variant="secondary" id="upload-avatar-${account.id}">Subir Avatar</ui-button>
-          <ui-button variant="danger" id="delete-account-${account.id}">Eliminar</ui-button>
+        <div class="account-avatar-row" style="display:flex; gap:15px; align-items:center;">
+          <img id="avatar-${account.id}" src="${account.avatar || '/default-avatar.png'}" alt="Avatar" style="width:60px;height:60px;border-radius:50%;object-fit:cover;flex-shrink:0;">
+          <ui-button variant="secondary" id="upload-avatar-${account.id}" style="width:auto;">Subir Avatar</ui-button>
+          <ui-button variant="danger" id="delete-account-${account.id}" style="width:auto;">Eliminar</ui-button>
         </div>
-        <div id="skin-viewer-${account.id}" style="width:200px;height:250px;background:rgba(15,23,42,0.4);border-radius:8px;border:1px solid var(--border-color);"></div>
+        <div id="skin-viewer-${account.id}" class="account-skin-viewer" style="width:200px;height:250px;background:rgba(15,23,42,0.4);border-radius:8px;border:1px solid var(--border-color);"></div>
         <ui-button variant="secondary" id="upload-skin-${account.id}">Subir Skin</ui-button>
       `;
       accountsList.appendChild(card);
 
-      // Configurar SkinViewer para esta cuenta
+      // Configurar SkinViewer para esta cuenta (compacto en móvil)
+      const isMobile = window.innerWidth <= 768;
+      const accW = isMobile ? 140 : 200;
+      const accH = isMobile ? 196 : 250;
       const skinUrl = account.skin || 'https://minotar.net/skin/MHF_Steve';
       const skinViewer = new skinview3d.SkinViewer({
         canvas: document.createElement('canvas'),
-        width: 200,
-        height: 250,
+        width: accW,
+        height: accH,
         skin: skinUrl
       });
       const skinContainer = DOM.get(`skin-viewer-${account.id}`);

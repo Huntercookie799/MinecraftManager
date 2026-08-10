@@ -26,6 +26,16 @@ export class ServerHeader {
         const infoEl = DOM.get('current-server-info');
         if (nameEl) nameEl.textContent = server.name;
         if (infoEl) infoEl.textContent = `Puerto: ${server.port} | RAM: ${server.memory}`;
+        
+        // Avatar
+        if (server.avatar) {
+          ServerHeader.setAvatar(server.avatar);
+        }
+        
+        // Accent color
+        if (server.accentColor) {
+          ServerHeader.setAccentColor(server.accentColor);
+        }
       }
     }
 
@@ -76,6 +86,23 @@ export class ServerHeader {
 
     // World time indicator
     this.updateWorldTimeUI(statusObj.worldTime);
+  }
+
+  static setAvatar(url) {
+    const img = DOM.get('server-avatar-img');
+    const placeholder = DOM.get('server-avatar-placeholder');
+    if (img && placeholder) {
+      img.src = url;
+      img.style.display = 'block';
+      placeholder.style.display = 'none';
+    }
+  }
+
+  static setAccentColor(color) {
+    document.documentElement.style.setProperty('--server-accent', color);
+    // Aplicar al header y badges
+    const header = DOM.get('server-header');
+    if (header) header.style.borderColor = color;
   }
 
   static updateWorldExistsUI(exists) {

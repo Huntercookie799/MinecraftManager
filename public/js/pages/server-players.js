@@ -44,20 +44,24 @@ document.addEventListener('DOMContentLoaded', async () => {
     const list = DOM.get('players-list');
     const empty = DOM.get('players-empty');
     const countBadge = DOM.get('players-count-badge');
-    
+    const skeleton = DOM.get('players-skeleton');
+
+    // Primer dato real: reemplazar el skeleton de carga
+    if (skeleton) skeleton.style.display = 'none';
+
     const onlinePlayers = playersInfo.filter(p => p.online);
     countBadge.textContent = onlinePlayers.length;
 
     if (onlinePlayers.length === 0) {
       empty.style.display = 'flex';
-      list.querySelectorAll('.player-row').forEach(el => el.remove());
+      list.querySelectorAll('.player-row:not(.player-row-skeleton)').forEach(el => el.remove());
       return;
     }
 
     empty.style.display = 'none';
     const currentNames = new Set(onlinePlayers.map(p => p.name));
 
-    list.querySelectorAll('.player-row').forEach(el => {
+    list.querySelectorAll('.player-row:not(.player-row-skeleton)').forEach(el => {
       if (!currentNames.has(el.dataset.name)) el.remove();
     });
 

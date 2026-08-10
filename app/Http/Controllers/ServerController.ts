@@ -1,11 +1,14 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import path from "node:path";
+import { createWriteStream } from "node:fs";
+import { pipeline } from "node:stream/promises";
 import { serverManager } from "../../Services/ServerManager";
 import { MinecraftServiceError } from "../../Services/MinecraftService";
 import { prisma } from "../../Models/prisma";
 import { env } from "../../../config/env";
 import fs from "node:fs/promises";
 import { S3SyncService } from "../../Services/S3SyncService";
+import { jarManager } from "../../Services/JarManager";
 
 interface LogsQuery {
   sinceId?: string;
@@ -19,7 +22,10 @@ interface CreateServerBody {
   name: string;
   memory?: string;
   port?: number;
+  version?: string;
 }
+
+const DEFAULT_MC_VERSION = "1.21.8";
 
 interface FilesQuery {
   path?: string;
@@ -80,15 +86,29 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
     }
   });
   // List all servers
+  // List available Minecraft versions (Purpur)
+  app.get("/versions", async () => {
+    const versions = await jarManager.listVersions();
+    return { versions };
+  });
+
   app.get("/", async () => {
     const servers = await prisma.server.findMany();
     const result = await Promise.all(servers.map(async s => {
-      const service = serverManager.getServiceById(s.id);
+      const service = serverManager.getService({
+        id: s.id,
+        name: s.name,
+        directory: s.path,
+        port: s.port,
+        memory: s.memory,
+        version: s.version ?? undefined
+      });
+      await service.tryAdopt();
       const worldExists = await checkWorldExists(s.path);
       return {
         ...s,
         worldExists,
-        status: service ? service.getStatus() : { status: "OFFLINE", players: 0, maxPlayers: 20, uptime: 0 }
+        status: service.getStatus()
       };
     }));
     return { servers: result };
@@ -96,8 +116,13 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
 
   // Create a server
   app.post<{ Body: CreateServerBody }>("/", async (request, reply) => {
-    const { name, memory, port } = request.body;
+    const { name, memory, port, version } = request.body;
     if (!name) return reply.code(400).send({ error: "Missing name" });
+
+    const mcVersion = version || DEFAULT_MC_VERSION;
+    if (!/^\d+\.\d+(\.\d+)?$/.test(mcVersion)) {
+      return reply.code(400).send({ error: "Invalid Minecraft version format" });
+    }
 
     // Assign port
     let assignedPort = port;
@@ -115,6 +140,7 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
           name,
           port: assignedPort,
           memory: memory || "2G",
+          version: mcVersion,
           path: serverPath
         }
       });
@@ -124,7 +150,69 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
       throw e;
     }
   });
-  
+
+  // Update server settings (name, avatar, accent color)
+  app.put<{ Params: { id: string } }>("/:id/settings", async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const server = await prisma.server.findUnique({ where: { id } });
+    if (!server) return reply.code(404).send({ error: "Server not found" });
+
+    // Multipart upload for avatar
+    let avatarUrl: string | null = null;
+    const contentType = request.headers["content-type"] || "";
+    
+    if (contentType.includes("multipart/form-data")) {
+      const data = await request.file();
+      if (data) {
+        const ext = path.extname(data.filename) || ".png";
+        if (![".png", ".jpg", ".jpeg", ".gif", ".webp"].includes(ext.toLowerCase())) {
+          return reply.code(400).send({ error: "Invalid image format. Allowed: png, jpg, jpeg, gif, webp" });
+        }
+        const fileName = `server_${id}_avatar${ext}`;
+        const uploadDir = path.join(__dirname, "..", "..", "..", "public", "server-icons");
+        await fs.mkdir(uploadDir, { recursive: true });
+        const dest = path.join(uploadDir, fileName);
+        await pipeline(data.file, createWriteStream(dest));
+        avatarUrl = `/server-icons/${fileName}`;
+
+        // Delete old avatar if exists
+        if (server.avatar) {
+          const oldPath = path.join(__dirname, "..", "..", "..", "public", server.avatar);
+          await fs.rm(oldPath, { force: true }).catch(() => {});
+        }
+      }
+    }
+
+    // Accept JSON body for name & accentColor update
+    let updateData: any = {};
+    if (contentType.includes("application/json")) {
+      const body = request.body as any || {};
+      if (body.name && body.name !== server.name) {
+        // Validate name uniqueness
+        const existing = await prisma.server.findUnique({ where: { name: body.name } });
+        if (existing && existing.id !== id) {
+          return reply.code(409).send({ error: "A server with that name already exists" });
+        }
+        updateData.name = body.name;
+      }
+      if (body.accentColor) {
+        if (!/^#[0-9a-fA-F]{6}$/.test(body.accentColor)) {
+          return reply.code(400).send({ error: "Invalid accent color. Use hex format e.g. #FF55FF" });
+        }
+        updateData.accentColor = body.accentColor;
+      }
+    }
+
+    if (avatarUrl) updateData.avatar = avatarUrl;
+
+    if (Object.keys(updateData).length === 0) {
+      return reply.code(400).send({ error: "No fields to update" });
+    }
+
+    const updated = await prisma.server.update({ where: { id }, data: updateData });
+    return { success: true, server: updated };
+  });
+
   // Delete a server
   app.delete<{ Params: { id: string } }>("/:id", async (request, reply) => {
     const id = parseInt(request.params.id, 10);
@@ -149,8 +237,10 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
       name: server.name,
       directory: server.path,
       port: server.port,
-      memory: server.memory
+      memory: server.memory,
+      version: server.version
     });
+    await service.tryAdopt();
     
     try {
       return await action(service);
@@ -172,8 +262,10 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
       name: server.name,
       directory: server.path,
       port: server.port,
-      memory: server.memory
+      memory: server.memory,
+      version: server.version
     });
+    await service.tryAdopt();
 
     const status = service.getStatus();
     const worldExists = await checkWorldExists(server.path);

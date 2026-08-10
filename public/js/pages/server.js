@@ -82,6 +82,92 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
+  // ─── Personalization ───────────────────────────────────────────────────
+  const editModal = DOM.get('edit-server-modal');
+  
+  DOM.on('btn-edit-server', 'click', () => {
+    // Cargar valores actuales
+    const nameEl = DOM.get('current-server-name');
+    if (nameEl) DOM.get('edit-server-name').value = nameEl.textContent;
+    const avatarImg = DOM.get('server-avatar-img');
+    if (avatarImg && avatarImg.src) {
+      const previewImg = DOM.get('edit-avatar-preview-img');
+      previewImg.src = avatarImg.src;
+      previewImg.style.display = 'block';
+    }
+    const currentColor = getComputedStyle(document.documentElement).getPropertyValue('--server-accent').trim() || '#55FF55';
+    const colorInput = DOM.get('edit-server-color');
+    colorInput.value = currentColor;
+    DOM.get('edit-server-color-hex').textContent = currentColor;
+    DOM.show(editModal);
+  });
+  
+  DOM.on('btn-cancel-edit-server', 'click', () => DOM.hide(editModal));
+  
+  DOM.on('btn-edit-avatar', 'click', () => DOM.get('edit-server-avatar').click());
+  
+  DOM.on('edit-server-avatar', 'change', () => {
+    const file = DOM.get('edit-server-avatar').files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const previewImg = DOM.get('edit-avatar-preview-img');
+        previewImg.src = e.target.result;
+        previewImg.style.display = 'block';
+      };
+      reader.readAsDataURL(file);
+    }
+  });
+  
+  DOM.on('edit-server-color', 'input', () => {
+    const val = DOM.get('edit-server-color').value;
+    DOM.get('edit-server-color-hex').textContent = val;
+  });
+  
+  DOM.on('btn-save-server-settings', 'click', async () => {
+    UIProgress.show('Guardando...');
+    const name = DOM.get('edit-server-name').value.trim();
+    const color = DOM.get('edit-server-color').value;
+    const avatarFile = DOM.get('edit-server-avatar').files[0];
+    
+    // Build form data if there's an avatar, else JSON
+    let response;
+    if (avatarFile) {
+      const formData = new FormData();
+      if (name) formData.append('name', name);
+      formData.append('accentColor', color);
+      formData.append('avatar', avatarFile);
+      response = await fetch(`/api/server/${serverId}/settings`, {
+        method: 'PUT',
+        headers: { 'Authorization': 'Bearer ' + API.token },
+        body: formData
+      });
+    } else {
+      response = await fetch(`/api/server/${serverId}/settings`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': 'Bearer ' + API.token,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ name, accentColor: color })
+      });
+    }
+    
+    const data = await response.json();
+    UIProgress.hide();
+    
+    if (response.ok && data.server) {
+      // Actualizar UI inmediatamente
+      if (data.server.name) DOM.get('current-server-name').textContent = data.server.name;
+      if (data.server.avatar) ServerHeader.setAvatar(data.server.avatar);
+      if (data.server.accentColor) ServerHeader.setAccentColor(data.server.accentColor);
+      DOM.hide(editModal);
+    } else {
+      const errMsg = data.error || 'Error al guardar';
+      alert(errMsg);
+    }
+  });
+
   DOM.on(btnSendCommand, 'click', sendCommand);
   DOM.on(commandInput, 'keypress', (e) => {
     if (e.key === 'Enter') sendCommand();
@@ -104,27 +190,62 @@ document.addEventListener('DOMContentLoaded', async () => {
       btnStart.setAttribute('disabled', 'true');
       btnStop.removeAttribute('disabled');
       btnRestart.removeAttribute('disabled');
-      commandInput.removeAttribute('disabled');
-      btnSendCommand.removeAttribute('disabled');
-      DOM.get('starting-progress-container').classList.remove('active');
+      commandInput?.removeAttribute('disabled');
+      btnSendCommand?.removeAttribute('disabled');
+      DOM.get('starting-progress-container')?.classList.remove('active');
     } else if (currentStatus === 'STARTING') {
       btnStart.setAttribute('disabled', 'true');
       btnStop.removeAttribute('disabled');
       btnRestart.removeAttribute('disabled');
-      commandInput.setAttribute('disabled', 'true');
-      btnSendCommand.setAttribute('disabled', 'true');
-      DOM.get('starting-progress-container').classList.add('active');
+      commandInput?.setAttribute('disabled', 'true');
+      btnSendCommand?.setAttribute('disabled', 'true');
+      DOM.get('starting-progress-container')?.classList.add('active');
     } else {
       btnStart.removeAttribute('disabled');
       btnStop.setAttribute('disabled', 'true');
       btnRestart.setAttribute('disabled', 'true');
-      commandInput.setAttribute('disabled', 'true');
-      btnSendCommand.setAttribute('disabled', 'true');
-      DOM.get('starting-progress-container').classList.remove('active');
+      commandInput?.setAttribute('disabled', 'true');
+      btnSendCommand?.setAttribute('disabled', 'true');
+      DOM.get('starting-progress-container')?.classList.remove('active');
     }
 
     DOM.get('info-players').textContent = `${statusObj.players}/${statusObj.maxPlayers}`;
     DOM.get('info-uptime').textContent = formatUptime(statusObj.uptime);
     if (statusObj.version) DOM.get('info-version').textContent = statusObj.version;
+
+    // ── Estrategia de acceso 80/443 ─────────────────────────────────────
+    if (statusObj.ip && statusObj.port) {
+      const addr = `${statusObj.ip}:${statusObj.port}`;
+      const ipEl = DOM.get('info-ip');
+      if (ipEl) ipEl.textContent = addr;
+      const copyBtn = DOM.get('btn-copy-ip');
+      if (copyBtn) copyBtn.style.display = 'inline-flex';
+
+      const restricted = statusObj.port === 80 || statusObj.port === 443;
+      const badge = DOM.get('restricted-network-badge');
+      if (badge) badge.style.display = restricted ? 'block' : 'none';
+      const srvHint = DOM.get('srv-hint');
+      if (srvHint) {
+        srvHint.style.display = restricted ? 'block' : 'none';
+        if (restricted) {
+          srvHint.innerHTML = `Con un dominio, agregá el registro SRV: <code>_minecraft._tcp.tudominio.com</code> → puerto <code>${statusObj.port}</code> en <code>${statusObj.ip}</code> para que los jugadores escriban solo el dominio.`;
+        }
+      }
+    }
+  });
+
+  // Copiar dirección de conexión
+  DOM.on('btn-copy-ip', 'click', async () => {
+    const addr = DOM.get('info-ip')?.textContent;
+    if (!addr || addr === '--') return;
+    try {
+      await navigator.clipboard.writeText(addr);
+      const btn = DOM.get('btn-copy-ip');
+      const original = btn.innerHTML;
+      btn.innerHTML = '✓ Copiado';
+      setTimeout(() => { btn.innerHTML = original; }, 1500);
+    } catch {
+      // clipboard no disponible (p.ej. http no seguro)
+    }
   });
 });

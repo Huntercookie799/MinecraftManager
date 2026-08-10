@@ -1,5 +1,8 @@
-import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { spawn, execFile, type ChildProcessWithoutNullStreams } from "node:child_process";
+import { promisify } from "node:util";
 import { EventEmitter } from "node:events";
+
+const execFileAsync = promisify(execFile);
 import { prisma } from "../Models/prisma";
 import fs from "node:fs/promises";
 import path from "node:path";
@@ -23,6 +26,7 @@ interface PlayerState {
 }
 
 import { S3SyncService } from "./S3SyncService";
+import { jarManager } from "./JarManager";
 
 export interface MinecraftServerConfig {
   id: number;
@@ -30,13 +34,15 @@ export interface MinecraftServerConfig {
   directory: string;
   port: number;
   memory: string;
+  version?: string;
 }
 
 type ServiceErrorCode =
   | "COMMAND_REJECTED"
   | "EULA_NOT_ACCEPTED"
   | "MINECRAFT_NOT_RUNNING"
-  | "PAPER_JAR_MISSING";
+  | "PAPER_JAR_MISSING"
+  | "JAR_DOWNLOAD_FAILED";
 
 export class MinecraftServiceError extends Error {
   constructor(
@@ -79,35 +85,64 @@ export class MinecraftService extends EventEmitter {
   // Database logs batching
   private pendingDbLogs: { level: string, message: string, createdAt: Date }[] = [];
   private flushLogsTimer?: NodeJS.Timeout;
+  private jarPath?: string;
+
+  // Orphaned process adoption (the panel restarted while a server kept running)
+  private adopted = false;
+  private adoptedPid?: number;
+  private tailTimer?: NodeJS.Timeout;
+  private tailOffset = 0;
+  private adoptionChecked = false;
+  private refreshTried = new Set<string>();
 
   constructor(public readonly config: MinecraftServerConfig) {
     super();
     this.s3Sync = new S3SyncService();
   }
 
+  get version(): string {
+    return this.config.version || "1.21.8";
+  }
+
   async start(): Promise<ServerStatus> {
     if (this.child && !this.child.killed) {
       return this.getStatus();
     }
+    // An adopted orphan is still running — nothing to start.
+    if (this.adopted && this.isPidAlive(this.adoptedPid)) {
+      return this.getStatus();
+    }
+    if (this.adopted) {
+      this.adopted = false;
+      this.stopFileTail();
+    }
 
     await this.ensureRuntimeIsReady();
-    await this.ensureServerProperties();
-    this.readServerProperties();
 
-    this.state = "STARTING";
-    this.startedAt = new Date();
-    this.lastError = undefined;
-    
-    // S3: Restaurar desde el backup antes de arrancar
+    // S3: Restaurar desde el backup/template ANTES de fijar server.properties.
+    // El template trae un server.properties con puerto por defecto (25565); si se
+    // restaurara después, pisaría el puerto asignado a este servidor.
     try {
       await this.s3Sync.downloadAndUnzip(this.config.directory, this.config.id, (msg) => this.addLog("system", msg));
     } catch (e: any) {
       this.addLog("system", `Failed to sync from S3: ${e.message}`);
     }
 
+    await this.ensureServerProperties();
+    this.readServerProperties();
+
+    this.state = "STARTING";
+    this.startedAt = new Date();
+    this.lastError = undefined;
+
+    // Puertos privilegiados (<1024, p.ej. 80/443): en Linux requieren root o CAP_NET_BIND_SERVICE
+    if (this.config.port < 1024 && process.platform !== "win32" && typeof process.getuid === "function" && process.getuid() !== 0) {
+      this.addLog("system", `Advertencia: el puerto ${this.config.port} es privilegiado (<1024). En Linux necesitás ejecutar el panel como root o dar CAP_NET_BIND_SERVICE a la JVM para bindearlo.`);
+    }
+
     this.addLog("system", `Starting Minecraft from ${this.config.directory}`);
 
-    const args = ["-Xms" + this.config.memory, "-Xmx" + this.config.memory, "-jar", env.paperJar, "nogui"];
+    const args = ["-Xms" + this.config.memory, "-Xmx" + this.config.memory, "-jar", this.jarPath ?? env.paperJar, "nogui"];
 
     const child = spawn(env.javaBin, args, {
       cwd: this.config.directory,
@@ -117,6 +152,7 @@ export class MinecraftService extends EventEmitter {
     });
 
     this.child = child;
+    void fs.writeFile(this.pidPath, String(child.pid), "utf8").catch(() => {});
 
     child.stdout.setEncoding("utf8");
     child.stderr.setEncoding("utf8");
@@ -143,6 +179,9 @@ export class MinecraftService extends EventEmitter {
       this.worldTime = null;
       this.state = expectedStop ? "OFFLINE" : "ERROR";
       this.stopPolling();
+      this.adopted = false;
+      this.stopFileTail();
+      void fs.rm(this.pidPath, { force: true }).catch(() => {});
 
       if (!expectedStop) {
         this.lastError = `Minecraft exited unexpectedly with code ${code ?? "null"}.`;
@@ -160,6 +199,24 @@ export class MinecraftService extends EventEmitter {
   }
 
   async stop(): Promise<ServerStatus> {
+    if (this.adopted) {
+      if (this.isPidAlive(this.adoptedPid)) {
+        this.addLog("system", `Deteniendo proceso huérfano (PID ${this.adoptedPid}) — sin consola, se fuerza el cierre.`);
+        await this.killPid(this.adoptedPid!);
+      }
+      this.adopted = false;
+      this.stopFileTail();
+      this.startedAt = undefined;
+      this.state = "OFFLINE";
+      await fs.rm(this.pidPath, { force: true }).catch(() => {});
+      try {
+        await this.s3Sync.zipAndUpload(this.config.directory, this.config.id, (msg) => this.addLog("system", msg));
+      } catch (e: any) {
+        this.addLog("system", `Failed to backup to S3: ${e.message}`);
+      }
+      return this.getStatus();
+    }
+
     if (!this.child || this.child.killed) {
       this.state = "OFFLINE";
       return this.getStatus();
@@ -185,6 +242,13 @@ export class MinecraftService extends EventEmitter {
   }
 
   sendCommand(rawCommand: string): { accepted: true; command: string } {
+    if (this.adopted) {
+      throw new MinecraftServiceError(
+        "Este servidor es un proceso huérfano (sobrevivió a un reinicio del panel). Reinícialo para recuperar la consola.",
+        409,
+        "COMMAND_REJECTED"
+      );
+    }
     if (!this.child || this.child.killed || this.state === "OFFLINE") {
       throw new MinecraftServiceError("Minecraft is not running.", 409, "MINECRAFT_NOT_RUNNING");
     }
@@ -221,10 +285,10 @@ export class MinecraftService extends EventEmitter {
       playerNames: this.players.names,
       world: this.world,
       uptime,
-      pid: this.child?.pid,
+      pid: this.child?.pid ?? this.adoptedPid,
       startedAt: this.startedAt?.toISOString(),
       lastError: this.lastError,
-      version: process.env.MINECRAFT_VERSION ? `Purpur ${process.env.MINECRAFT_VERSION}` : "Purpur 1.21.x",
+      version: `Purpur ${this.version}`,
       ip: process.env.RENDER_EXTERNAL_HOSTNAME || process.env.PUBLIC_IP || "localhost",
       memory: this.config.memory,
       port: this.config.port,
@@ -240,6 +304,13 @@ export class MinecraftService extends EventEmitter {
   }
 
   async dispose(): Promise<void> {
+    if (this.adopted) {
+      if (this.isPidAlive(this.adoptedPid)) await this.killPid(this.adoptedPid!);
+      this.adopted = false;
+      this.stopFileTail();
+      await fs.rm(this.pidPath, { force: true }).catch(() => {});
+      return;
+    }
     if (!this.child || this.child.killed) return;
     await this.stop();
   }
@@ -299,6 +370,10 @@ export class MinecraftService extends EventEmitter {
   private runPollingCycle(): void {
     if (this.state !== "ONLINE" || !this.child || this.child.killed) return;
 
+    // Refresh the online player list every cycle. This keeps the list accurate
+    // even for players that were already online before the manager (re)started.
+    this.writeRawCommand("list");
+
     // Query world time
     this.writeRawCommand("time query daytime");
 
@@ -313,18 +388,18 @@ export class MinecraftService extends EventEmitter {
 
   private async ensureRuntimeIsReady(): Promise<void> {
     await fs.mkdir(this.config.directory, { recursive: true });
-    await this.ensurePaperJarExists();
+    await this.ensureServerJar();
     await this.ensureEulaAccepted();
   }
 
-  private async ensurePaperJarExists(): Promise<void> {
+  private async ensureServerJar(): Promise<void> {
     try {
-      await fs.access(env.paperJar);
-    } catch {
+      this.jarPath = await jarManager.resolveJarPath(this.version);
+    } catch (e: any) {
       throw new MinecraftServiceError(
-        `Paper jar not found at ${env.paperJar}. Run "npm run minecraft:download" first.`,
+        `Failed to obtain Purpur jar for version ${this.version}: ${e.message}`,
         409,
-        "PAPER_JAR_MISSING"
+        "JAR_DOWNLOAD_FAILED"
       );
     }
   }
@@ -430,10 +505,279 @@ export class MinecraftService extends EventEmitter {
     const trimmed = message.trimEnd();
     if (!trimmed) return;
     this.addLog(stream, trimmed);
-    this.updateStateFromLog(trimmed);
-    this.updatePlayersFromLog(trimmed);
-    this.updateWorldTimeFromLog(trimmed);
-    this.updatePlayerDataFromLog(trimmed);
+    this.parseLineForState(trimmed);
+  }
+
+  private parseLineForState(message: string): void {
+    this.updateStateFromLog(message);
+    this.updatePlayersFromLog(message);
+    this.updateWorldTimeFromLog(message);
+    this.updatePlayerDataFromLog(message);
+  }
+
+  // ─── Private: Orphaned process adoption ────────────────────────────────────
+
+  private get pidPath(): string {
+    return path.join(this.config.directory, "server.pid");
+  }
+
+  private get logFilePath(): string {
+    return path.join(this.config.directory, "logs", "latest.log");
+  }
+
+  private isPidAlive(pid?: number): boolean {
+    if (!pid || pid <= 0) return false;
+    try {
+      process.kill(pid, 0);
+      return true;
+    } catch (e: any) {
+      return e.code === "EPERM";
+    }
+  }
+
+  /**
+   * Reconoce un proceso de Minecraft que siga corriendo tras un reinicio del
+   * panel (proceso huérfano): lo adopta, reconstruye su estado leyendo el
+   * archivo de log persistido y sigue el log por archivo.
+   */
+  async tryAdopt(): Promise<void> {
+    if (this.adoptionChecked || this.child) return;
+    this.adoptionChecked = true;
+    if (this.state !== "OFFLINE") return;
+
+    // 1) Ruta rápida: pidfile del arranque anterior
+    let pid: number | undefined;
+    try {
+      pid = Number((await fs.readFile(this.pidPath, "utf8")).trim());
+    } catch {
+      // No hay pidfile: nunca se inició o terminó limpiamente
+    }
+
+    if (!this.isPidAlive(pid)) {
+      // 2) Fallback: el proceso se inició antes de existir el pidfile (o sin él).
+      //    Si el puerto configurado está en uso por un proceso Java, es nuestro servidor.
+      pid = await this.findProcessByPort(this.config.port);
+      if (pid) {
+        void fs.writeFile(this.pidPath, String(pid), "utf8").catch(() => {});
+      } else {
+        await fs.rm(this.pidPath, { force: true }).catch(() => {});
+        return;
+      }
+    }
+
+    this.adopted = true;
+    this.adoptedPid = pid;
+    this.addLog("system", `Adoptado proceso de Minecraft existente (PID ${pid}) tras reinicio del panel.`);
+    this.addLog("system", "Modo huérfano: para usar la consola y los comandos, reinicia el servidor.");
+
+    this.readServerProperties();
+    await this.scanLogFile();
+    this.worldTime = null; // la hora del log es vieja; se recupera al reiniciar
+    // El PID está vivo: el servidor está corriendo (o terminando de arrancar)
+    this.state = "ONLINE";
+    this.startFileTail();
+  }
+
+  /** Reconstruye el estado (jugadores, mundo, online) desde logs/latest.log. */
+  private async scanLogFile(): Promise<void> {
+    try {
+      const stat = await fs.stat(this.logFilePath);
+      if (!stat.isFile() || stat.size === 0) return;
+      const content = await fs.readFile(this.logFilePath, "utf8");
+      this.tailOffset = Buffer.byteLength(content);
+      this.startedAt = new Date(stat.mtimeMs);
+      const lines = content.split(/\r?\n/).filter((line) => line.trim());
+      // Procesar todas las líneas para reconstruir el estado; guardar solo el final en el buffer
+      const keepFrom = Math.max(0, lines.length - 2000);
+      for (let i = 0; i < lines.length; i++) {
+        this.parseLineForState(lines[i]);
+        if (i >= keepFrom) this.addLog("stdout", lines[i]);
+      }
+    } catch {
+      this.startedAt = this.startedAt ?? new Date();
+    }
+  }
+
+  private startFileTail(): void {
+    if (this.tailTimer) return;
+    this.tailTimer = setInterval(() => this.tailLogFile(), 2000);
+  }
+
+  private stopFileTail(): void {
+    if (this.tailTimer) {
+      clearInterval(this.tailTimer);
+      this.tailTimer = undefined;
+    }
+  }
+
+  private async tailLogFile(): Promise<void> {
+    if (!this.adopted || !this.isPidAlive(this.adoptedPid)) {
+      const wasAdopted = this.adopted;
+      this.state = "OFFLINE";
+      this.adopted = false;
+      this.stopFileTail();
+      this.addLog("system", "El proceso de Minecraft adoptado terminó.");
+      await fs.rm(this.pidPath, { force: true }).catch(() => {});
+      if (wasAdopted) {
+        try {
+          await this.s3Sync.zipAndUpload(this.config.directory, this.config.id, (msg) => this.addLog("system", msg));
+        } catch (e: any) {
+          this.addLog("system", `Failed to backup to S3: ${e.message}`);
+        }
+      }
+      return;
+    }
+
+    try {
+      const stat = await fs.stat(this.logFilePath);
+      if (stat.size < this.tailOffset) this.tailOffset = 0; // log rotado/recreado
+      if (stat.size === this.tailOffset) return;
+      const handle = await fs.open(this.logFilePath, "r");
+      try {
+        const length = stat.size - this.tailOffset;
+        const buffer = Buffer.alloc(length);
+        await handle.read(buffer, 0, length, this.tailOffset);
+        this.tailOffset = stat.size;
+        for (const line of buffer.toString("utf8").split(/\r?\n/)) {
+          if (line.trim()) this.handleLogLine("stdout", line);
+        }
+      } finally {
+        await handle.close();
+      }
+      // Un proceso adoptado no tiene consola para consultar Pos/Dimension;
+      // recuperamos la ubicación de la línea de login ("logged in ... at ([dim]x, y, z)")
+      await this.refreshMissingPlayerData();
+    } catch {
+      // El log aún no existe (p.ej. arranque en curso)
+    }
+  }
+
+  /**
+   * Para procesos adoptados (sin consola): busca en el log la línea de login de
+   * cada jugador en línea que aún no tenga posición/dimensión. Se hace una sola
+   * vez por jugador (hasta que vuelva a entrar, donde el tail la parsea en vivo).
+   */
+  private async refreshMissingPlayerData(): Promise<void> {
+    const missing = this.players.names.filter((name) => {
+      if (this.refreshTried.has(name)) return false;
+      const session = this.playerSessions[name];
+      return !!session && (session.x === null || session.dimension === "unknown");
+    });
+    if (missing.length === 0) return;
+
+    try {
+      const content = await fs.readFile(this.logFilePath, "utf8");
+      for (const line of content.split(/\r?\n/)) {
+        const parsed = this.tryParsePlayerLogin(line);
+        if (parsed && this.players.names.includes(parsed.name) && this.playerSessions[parsed.name]) {
+          const session = this.playerSessions[parsed.name];
+          session.x = parsed.x;
+          session.y = parsed.y;
+          session.z = parsed.z;
+          session.dimension = parsed.dimension;
+        }
+      }
+    } catch {
+      // log no disponible
+    }
+    missing.forEach((name) => this.refreshTried.add(name));
+  }
+
+  /** Encuentra un proceso Java escuchando en el puerto dado (sin pidfile). */
+  private async findProcessByPort(port: number): Promise<number | undefined> {
+    if (process.platform === "win32") {
+      try {
+        const { stdout } = await execFileAsync("netstat", ["-ano", "-p", "tcp"], { windowsHide: true });
+        const target = `:${port}`;
+        for (const line of stdout.split(/\r?\n/)) {
+          if (!/LISTENING/i.test(line)) continue;
+          const match = line.match(/TCP\s+(\S+)\s+\S+\s+LISTENING\s+(\d+)/i);
+          if (match && match[1].endsWith(target)) {
+            const pid = Number(match[2]);
+            if (await this.isJavaProcess(pid)) return pid;
+          }
+        }
+      } catch {
+        // netstat no disponible
+      }
+      return undefined;
+    }
+
+    // Linux: /proc/net/tcp(+6) → inode del socket → /proc/*/fd → cmdline java
+    try {
+      const hexPort = port.toString(16).toUpperCase().padStart(4, "0");
+      const sockets = new Map<string, string>(); // inode → pid
+      const fdDirs = await fs.readdir("/proc");
+      for (const entry of fdDirs) {
+        if (!/^\d+$/.test(entry)) continue;
+        try {
+          const fds = await fs.readdir(`/proc/${entry}/fd`);
+          for (const fd of fds) {
+            try {
+              const link = await fs.readlink(`/proc/${entry}/fd/${fd}`);
+              const inode = link.match(/^socket:\[(\d+)\]$/)?.[1];
+              if (inode) sockets.set(inode, entry);
+            } catch { /* fd cerrado */ }
+          }
+        } catch { /* proceso desaparecido */ }
+      }
+      for (const file of ["/proc/net/tcp", "/proc/net/tcp6"]) {
+        let content: string;
+        try {
+          content = await fs.readFile(file, "utf8");
+        } catch {
+          continue;
+        }
+        for (const line of content.split(/\r?\n/).slice(1)) {
+          const parts = line.trim().split(/\s+/);
+          if (parts.length < 10) continue;
+          if (parts[3] !== "0A") continue; // 0A = LISTEN
+          const local = parts[1]; // HEX_IP:HEX_PORT
+          if (local.endsWith(`:${hexPort}`)) {
+            const inode = parts[9];
+            const pid = sockets.get(inode);
+            if (pid && await this.isJavaProcess(Number(pid))) return Number(pid);
+          }
+        }
+      }
+    } catch {
+      // /proc no disponible
+    }
+    return undefined;
+  }
+
+  private async isJavaProcess(pid: number): Promise<boolean> {
+    try {
+      if (process.platform === "win32") {
+        const { stdout } = await execFileAsync("wmic", ["process", "where", `ProcessId=${pid}`, "get", "CommandLine"], { windowsHide: true });
+        return /java/i.test(stdout);
+      }
+      const cmdline = await fs.readFile(`/proc/${pid}/cmdline`, "utf8");
+      return /java/i.test(cmdline);
+    } catch {
+      return false;
+    }
+  }
+
+  private async killPid(pid: number): Promise<void> {
+    if (process.platform === "win32") {
+      await new Promise<void>((resolve) => {
+        const killer = spawn("taskkill", ["/F", "/PID", String(pid)], { windowsHide: true });
+        killer.on("exit", () => resolve());
+        killer.on("error", () => resolve());
+      });
+    } else {
+      try {
+        process.kill(pid, "SIGTERM");
+      } catch {
+        // ya no existe
+      }
+    }
+    const deadline = Date.now() + 10_000;
+    while (Date.now() < deadline) {
+      if (!this.isPidAlive(pid)) return;
+      await new Promise((resolve) => setTimeout(resolve, 300));
+    }
   }
 
   private updateStateFromLog(message: string): void {
@@ -450,9 +794,13 @@ export class MinecraftService extends EventEmitter {
     if (listMatch?.groups) {
       const names = listMatch.groups.names.split(",").map((name) => name.trim()).filter(Boolean);
       this.players = { count: Number(listMatch.groups.count), max: Number(listMatch.groups.max), names };
+      // The /list response is authoritative: everyone in it IS online right now.
+      // Track a join time so playersInfo marks them online (even if the backend
+      // restarted while they were connected and no "joined the game" line was seen).
+      const now = new Date();
       names.forEach((name) => {
         if (!this.playerSessions[name]) {
-          this.playerSessions[name] = { total: 0, dimension: "unknown", x: null, y: null, z: null };
+          this.playerSessions[name] = { join: now, total: 0, dimension: "unknown", x: null, y: null, z: null };
         }
       });
       return;
@@ -505,7 +853,40 @@ export class MinecraftService extends EventEmitter {
     }
   }
 
+  /**
+   * Parsea la línea de login del servidor, que incluye la posición inicial y la
+   * dimensión: "<name>[/127.0.0.1:port] logged in with entity id N at ([dim]x, y, z)".
+   */
+  private tryParsePlayerLogin(message: string): { name: string; x: number; y: number; z: number; dimension: Dimension } | null {
+    const match = message.match(/: ([A-Za-z0-9_]{1,16})\[\S+\] logged in with entity id \d+ at \(\[([A-Za-z0-9_]+)\](-?[\d.]+), (-?[\d.]+), (-?[\d.]+)\)/);
+    if (!match) return null;
+    const dimFolder = match[2].toLowerCase();
+    const dimension: Dimension = dimFolder.includes("_nether")
+      ? "nether"
+      : dimFolder.includes("end")
+        ? "end"
+        : "overworld";
+    return {
+      name: match[1],
+      x: Math.round(parseFloat(match[3])),
+      y: Math.round(parseFloat(match[4])),
+      z: Math.round(parseFloat(match[5])),
+      dimension
+    };
+  }
+
   private updatePlayerDataFromLog(message: string): void {
+    // Línea de login del jugador (funciona también sin consola, p.ej. adoptados)
+    const login = this.tryParsePlayerLogin(message);
+    if (login && this.playerSessions[login.name]) {
+      const session = this.playerSessions[login.name];
+      session.x = login.x;
+      session.y = login.y;
+      session.z = login.z;
+      session.dimension = login.dimension;
+      return;
+    }
+
     // Response to: data get entity <name> Pos
     // Format (Paper/Vanilla): "<name> has the following entity data: [X.0d, Y.0d, Z.0d]"
     // or: "Data of entity <name>: [X.0d, Y.0d, Z.0d]"

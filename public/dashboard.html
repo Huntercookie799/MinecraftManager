@@ -45,6 +45,7 @@
             <th>Nombre</th>
             <th>Estado</th>
             <th>ID</th>
+            <th>Versión</th>
             <th>Puerto</th>
             <th>Memoria</th>
             <th>Jugadores</th>
@@ -65,8 +66,21 @@
       <ui-input id="new-server-name" placeholder="Ej. MiServidorSurvival"></ui-input>
       <label>Memoria (Ej. 2G, 4G):</label>
       <ui-input id="new-server-memory" value="2G"></ui-input>
-      <label>Puerto (Opcional):</label>
-      <ui-input type="number" id="new-server-port" placeholder="Automático"></ui-input>
+      <label>Versión de Minecraft:</label>
+      <select id="new-server-version" style="width: 100%;">
+        <option value="">Cargando versiones...</option>
+      </select>
+      <label>Estrategia de acceso:</label>
+      <select id="new-server-port-strategy" style="width: 100%;">
+        <option value="">Automático (25565+)</option>
+        <option value="80">Puerto 80 — Red restringida</option>
+        <option value="443">Puerto 443 (SSL) — Red restringida</option>
+        <option value="custom">Personalizado...</option>
+      </select>
+      <ui-input type="number" id="new-server-port" placeholder="Ej. 25566" style="display:none; margin-top:8px;"></ui-input>
+      <p style="color: var(--text-dim); font-family: var(--font-mono); font-size: 0.75rem; margin-top: 6px;">
+        Si la red solo permite conexiones entrantes por 80/443, elegí esa opción: los jugadores entrarán por <code>IP:80</code> o <code>IP:443</code>.
+      </p>
       
       <div class="button-group" style="margin-top: 15px; flex-direction: row; gap: 10px;">
         <ui-button variant="secondary" id="btn-cancel-new-server">Cancelar</ui-button>

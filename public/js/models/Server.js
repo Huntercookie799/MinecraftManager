@@ -6,9 +6,10 @@ export class ServerModel {
     return data?.servers || [];
   }
 
-  static async create(name, port, memory) {
+  static async create(name, port, memory, version) {
     const body = { name, memory };
     if (port) body.port = parseInt(port, 10);
+    if (version) body.version = version;
     return await API.call('', 'POST', body);
   }
 

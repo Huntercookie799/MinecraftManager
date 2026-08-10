@@ -49,8 +49,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     worlds.forEach(w => {
-      const isLoaded = w.isLoaded;
-      const isActive = w.isActive;
+      const isLoaded = w.isLoaded ?? false;
+      const isActive = w.isActive ?? false;
+      const folder = w.path || w.name;
+      const sizeMB = w.sizeBytes ? (w.sizeBytes / 1024 / 1024).toFixed(2) : (w.isActive ? '—' : '0.00');
       
       const card = DOM.create('div', 'world-card');
       card.innerHTML = `
@@ -59,12 +61,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         </div>
         <div class="world-info">
           <h4>${w.name}</h4>
-          <p>Carpeta: ${w.folder}</p>
-          <p>Estado: ${isLoaded ? 'Cargado' : 'Descargado'}</p>
-          <p>Tamaño: ${(w.sizeBytes / 1024 / 1024).toFixed(2)} MB</p>
+          <p>Carpeta: ${folder}</p>
+          <p>Estado: ${isActive ? 'Activo' : 'Descargado'}</p>
+          <p>Tamaño: ${sizeMB} MB</p>
         </div>
         <div class="world-actions">
-          <ui-button variant="blue" class="btn-load-world" data-world="${w.name}" ${isLoaded ? 'disabled' : ''}><i data-lucide="upload-cloud"></i> Cargar</ui-button>
+          <ui-button variant="blue" class="btn-load-world" data-world="${w.name}" ${isActive ? 'disabled' : ''}><i data-lucide="upload-cloud"></i> Cargar</ui-button>
           <ui-button variant="danger" class="btn-delete-world" data-world="${w.name}" ${isActive ? 'disabled' : ''}><i data-lucide="trash-2"></i> Borrar</ui-button>
         </div>
       `;

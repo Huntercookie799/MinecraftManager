@@ -154,6 +154,80 @@ export class S3SyncService {
     }
   }
 
+  /**
+   * Comprime y sube una carpeta específica (no todo el directorio del servidor).
+   */
+  async zipAndUploadFolder(
+    folderPath: string,
+    destinationKey: string,
+    log: (msg: string) => void
+  ): Promise<void> {
+    if (!this.client) {
+      log("S3 Sync is not configured. Skipping upload.");
+      return;
+    }
+
+    try {
+      await this.ensureBucketExists();
+      log(`[S3SyncService] Zipping ${folderPath}...`);
+
+      const tempZipPath = path.join(process.cwd(), `temp_upload_${Date.now()}.zip`);
+      const zip = new AdmZip();
+
+      // Agregar cada archivo/carpeta individualmente, ignorando los que estén bloqueados
+      await this.addFolderToZip(zip, folderPath, "");
+      zip.writeZip(tempZipPath);
+
+      const fileBuffer = await fs.readFile(tempZipPath);
+
+      log(`[S3SyncService] Uploading ${destinationKey} to S3 (${(fileBuffer.length / 1024 / 1024).toFixed(2)} MB)...`);
+
+      const putCommand = new PutObjectCommand({
+        Bucket: this.bucket,
+        Key: destinationKey,
+        Body: fileBuffer
+      });
+
+      await this.client.send(putCommand);
+      await fs.unlink(tempZipPath);
+      log(`[S3SyncService] Successfully uploaded ${destinationKey}.`);
+    } catch (error: any) {
+      log(`[S3SyncService] Error uploading folder: ${error.message}`);
+      console.error(error);
+    }
+  }
+
+  /** Recorre un directorio y agrega cada archivo al zip, saltando los bloqueados. */
+  private async addFolderToZip(zip: AdmZip, dirPath: string, zipPath: string): Promise<void> {
+    let entries: string[] = [];
+    try {
+      entries = await fs.readdir(dirPath);
+    } catch {
+      return; // directorio no accesible, saltar
+    }
+
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry);
+      const entryZipPath = zipPath ? `${zipPath}/${entry}` : entry;
+      try {
+        const stat = await fs.stat(fullPath);
+        if (stat.isDirectory()) {
+          await this.addFolderToZip(zip, fullPath, entryZipPath);
+        } else {
+          try {
+            const content = await fs.readFile(fullPath);
+            zip.addFile(entryZipPath, content);
+          } catch (e: any) {
+            // Archivo bloqueado (EBUSY/EPERM) — saltar silenciosamente
+            zip.addFile(entryZipPath, Buffer.from(`[locked] ${e.message}`));
+          }
+        }
+      } catch {
+        // No se pudo stat — saltar
+      }
+    }
+  }
+
   async listObjects(prefix: string = "") {
     if (!this.client) {
       throw new Error("S3 Sync is not configured");

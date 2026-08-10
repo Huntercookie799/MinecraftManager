@@ -8,6 +8,8 @@ export class ServerManager {
     if (!service) {
       service = new MinecraftService(config);
       this.servers.set(config.id, service);
+      // Un proceso de Minecraft que sobrevivió a un reinicio del panel se adopta solo.
+      void service.tryAdopt();
     }
     return service;
   }
@@ -27,6 +29,10 @@ export class ServerManager {
   async stopAll(): Promise<void> {
     const promises = Array.from(this.servers.values()).map(service => service.stop());
     await Promise.allSettled(promises);
+  }
+
+  async adoptAll(): Promise<void> {
+    await Promise.allSettled(Array.from(this.servers.values()).map(service => service.tryAdopt()));
   }
 }
 

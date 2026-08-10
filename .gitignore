@@ -39,6 +39,7 @@ minecraft/server/spigot.yml
 minecraft/server/bukkit.yml
 
 # ── Carpetas de servidores creados dinámicamente ─────────────
+minecraft_servers/
 backend/minecraft_servers/
 
 # ── Uploads y thumbnails generados ──────────────────────────

@@ -17,17 +17,44 @@ document.addEventListener('DOMContentLoaded', async () => {
   });
 
   const modal = DOM.get('new-server-modal');
-  DOM.on('btn-show-new-server', 'click', () => DOM.show(modal));
+  let versionsLoaded = false;
+
+  DOM.on('btn-show-new-server', 'click', async () => {
+    if (!versionsLoaded) {
+      const versionSelect = DOM.get('new-server-version');
+      const data = await API.call('/versions');
+      if (data && Array.isArray(data.versions) && data.versions.length > 0) {
+        versionSelect.innerHTML = data.versions.map(v => `<option value="${v}">${v}</option>`).join('');
+        // Seleccionar la más reciente por defecto
+        versionSelect.value = data.versions[0];
+        versionsLoaded = true;
+      } else {
+        versionSelect.innerHTML = '<option value="1.21.8">1.21.8</option>';
+      }
+    }
+    DOM.show(modal);
+  });
   DOM.on('btn-cancel-new-server', 'click', () => DOM.hide(modal));
+
+  // Estrategia de acceso: al elegir "Personalizado" se muestra el input de puerto
+  const portStrategy = DOM.get('new-server-port-strategy');
+  const customPort = DOM.get('new-server-port');
+  if (portStrategy && customPort) {
+    portStrategy.addEventListener('change', () => {
+      customPort.style.display = portStrategy.value === 'custom' ? 'block' : 'none';
+    });
+  }
 
   DOM.on('btn-create-server', 'click', async () => {
     UIProgress.show('Creando servidor...');
 
     const name = DOM.get('new-server-name').value;
     const memory = DOM.get('new-server-memory').value;
-    const port = DOM.get('new-server-port').value;
+    const strategy = DOM.get('new-server-port-strategy').value;
+    const port = strategy === 'custom' ? DOM.get('new-server-port').value : strategy;
+    const version = DOM.get('new-server-version').value;
 
-    const res = await ServerModel.create(name, port, memory);
+    const res = await ServerModel.create(name, port, memory, version);
     
     UIProgress.hide();
 
@@ -41,14 +68,14 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   async function loadServers() {
     const list = DOM.get('servers-list');
-    list.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 40px; color: var(--text-dim); font-family: var(--font-mono);">Cargando servidores...</td></tr>';
+    list.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 40px; color: var(--text-dim); font-family: var(--font-mono);">Cargando servidores...</td></tr>';
     
     const servers = await ServerModel.getAll();
     if (!servers) return;
 
     list.innerHTML = '';
     if (servers.length === 0) {
-      list.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 40px; color: var(--text-dim); font-family: var(--font-mono);">No hay servidores creados.</td></tr>';
+      list.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 40px; color: var(--text-dim); font-family: var(--font-mono);">No hay servidores creados.</td></tr>';
       return;
     }
 
@@ -71,6 +98,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           </div>
         </td>
         <td style="font-family: var(--font-mono); color: var(--text-dim);">${server.id}</td>
+        <td style="font-family: var(--font-mono); color: var(--text-dim);">${server.version || '—'}</td>
         <td style="font-family: var(--font-mono);">${server.port}</td>
         <td style="font-family: var(--font-mono);">${server.memory}</td>
         <td style="font-family: var(--font-mono);">${server.status?.players || 0}/${server.status?.maxPlayers || 0}</td>

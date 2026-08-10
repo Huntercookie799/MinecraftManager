@@ -39,10 +39,17 @@
   <div class="content" id="app-container">
     
     <!-- Header General -->
-    <div class="header">
-      <div class="server-title">
-        <h2 id="current-server-name">Cargando...</h2>
-        <p id="current-server-info">Puerto: -- | RAM: --</p>
+    <div class="header" id="server-header">
+      <div style="display: flex; align-items: center; gap: 15px;">
+        <!-- Avatar del servidor -->
+        <div id="server-avatar-wrap" style="width: 48px; height: 48px; flex-shrink: 0;">
+          <img id="server-avatar-img" src="" alt="avatar" style="width: 48px; height: 48px; border: 2px solid var(--border-color); border-radius: var(--border-radius); image-rendering: pixelated; display: none;">
+          <div id="server-avatar-placeholder" style="width: 48px; height: 48px; background: var(--bg-core); border: 2px solid var(--border-color); border-radius: var(--border-radius); display: flex; align-items: center; justify-content: center; font-size: 1.5rem; color: var(--text-dim);">🖥️</div>
+        </div>
+        <div class="server-title">
+          <h2 id="current-server-name"><span class="skeleton skeleton-title"></span></h2>
+          <p id="current-server-info"><span class="skeleton skeleton-sub"></span></p>
+        </div>
       </div>
       <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
         <!-- World Exists Indicator -->
@@ -88,8 +95,6 @@
           <i data-lucide="loader-2" class="spin-icon" style="width:18px;height:18px;"></i>
           Preparando entorno...
         </div>
-        <div class="starting-progress-subtext" id="starting-progress-subtext">Restaurando archivos de guardado o plantillas desde Cloudflare R2</div>
-        <div class="starting-progress-bar"></div>
       </div>
 
       <div class="cards-grid">
@@ -109,16 +114,51 @@
           <p><strong><i data-lucide="users" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>Jugadores:</strong> <span id="info-players">0/0</span></p>
           <p><strong><i data-lucide="clock" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>Uptime:</strong> <span id="info-uptime">0s</span></p>
           <p><strong><i data-lucide="tag" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>Versión:</strong> <span id="info-version">--</span></p>
-          <p><strong><i data-lucide="wifi" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>Conexión:</strong> <span id="info-ip">--</span></p>
+          <p><strong><i data-lucide="wifi" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>Conexión:</strong> <span id="info-ip">--</span>
+            <button id="btn-copy-ip" class="btn-copy-ip" title="Copiar dirección" style="display:none;"><i data-lucide="copy" style="width:12px;height:12px;"></i> Copiar</button>
+          </p>
+          <div id="restricted-network-badge" class="restricted-network-badge" style="display:none;">✓ Accesible en red restringida (80/443)</div>
+          <p id="srv-hint" class="srv-hint" style="display:none;"></p>
           <p><strong><i data-lucide="compass" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>Mundo:</strong> <span id="info-world-status">--</span></p>
-          <p style="margin-top: 15px;">
-            <ui-button variant="danger" id="btn-delete-server"><i data-lucide="trash-2" style="width:16px;height:16px;"></i> Eliminar Servidor</ui-button>
+          <hr style="border: none; border-top: 1px solid var(--border-color); margin: 15px 0;">
+          <p><strong><i data-lucide="paintbrush" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>Personalizar:</strong></p>
+          <p style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;">
+            <ui-button variant="secondary" size="sm" id="btn-edit-server" style="width: auto; display: inline-flex;"><i data-lucide="edit-3" style="width:14px;height:14px;"></i> Editar</ui-button>
+            <ui-button variant="danger" size="sm" id="btn-delete-server" style="width: auto; display: inline-flex;"><i data-lucide="trash-2" style="width:14px;height:14px;"></i> Eliminar</ui-button>
           </p>
         </div>
       </div>
 
     </div>
   </div>
+
+  <!-- Modal de Personalizacion -->
+  <ui-modal id="edit-server-modal" title="Personalizar Servidor" style="display: none;">
+    <div>
+      <label>Nombre del Servidor:</label>
+      <ui-input id="edit-server-name" placeholder="Nombre visible"></ui-input>
+      
+      <label>Avatar (cuadrado, PNG/JPG):</label>
+      <ui-input type="file" id="edit-server-avatar" accept="image/png,image/jpeg,image/gif,image/webp" hidden></ui-input>
+      <div style="display: flex; align-items: center; gap: 10px; margin-top: 5px;">
+        <div id="edit-avatar-preview" style="width: 48px; height: 48px; background: var(--bg-core); border: 2px solid var(--border-color); border-radius: var(--border-radius); overflow: hidden; flex-shrink: 0;">
+          <img id="edit-avatar-preview-img" src="" style="width:48px;height:48px;object-fit:cover;display:none;">
+        </div>
+        <ui-button variant="secondary" id="btn-edit-avatar" style="width: auto; display: inline-flex; padding: 6px 12px;"><i data-lucide="image"></i> Subir avatar</ui-button>
+      </div>
+      
+      <label>Color de acento:</label>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <input type="color" id="edit-server-color" value="#55FF55" style="width: 50px; height: 36px; cursor: pointer;">
+        <span id="edit-server-color-hex" style="font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-dim);">#55FF55</span>
+      </div>
+      
+      <div class="button-group" style="margin-top: 18px; flex-direction: row; gap: 10px;">
+        <ui-button variant="secondary" id="btn-cancel-edit-server">Cancelar</ui-button>
+        <ui-button variant="success" id="btn-save-server-settings">Guardar</ui-button>
+      </div>
+    </div>
+  </ui-modal>
 
   <script type="module" src="/js/pages/server.js"></script>
 </body>

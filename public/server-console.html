@@ -20,6 +20,247 @@
     });
   </script>
   <script type="module" src="/js/components/UIThemeToggle.js"></script>
+  
+  <style>
+    /* ─── ESTILOS DEL SPINNER DENTRO DE LA TERMINAL ────────────────────── */
+    
+    /* Contenedor de la terminal con posición relativa */
+    .terminal-container {
+      position: relative;
+      min-height: 400px;
+      background: var(--terminal-bg, #0a0a0a);
+      border-radius: var(--border-radius);
+      overflow: hidden;
+    }
+    
+    /* Overlay del spinner dentro de la terminal */
+    .terminal-spinner-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(10, 10, 10, 0.85);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      z-index: 10;
+      backdrop-filter: blur(2px);
+      border-radius: var(--border-radius);
+    }
+    
+    .terminal-spinner-overlay.active {
+      display: flex;
+    }
+    
+    /* Spinner animado estilo terminal */
+    .terminal-spinner {
+      position: relative;
+      width: 50px;
+      height: 50px;
+    }
+    
+    .terminal-spinner-ring {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      border: 3px solid transparent;
+      border-top-color: #4ade80;
+      animation: spin 1s cubic-bezier(0.68, -0.55, 0.265, 1.55) infinite;
+    }
+    
+    .terminal-spinner-ring:nth-child(2) {
+      width: 75%;
+      height: 75%;
+      top: 12.5%;
+      left: 12.5%;
+      border-top-color: #4f8cf7;
+      animation-duration: 1.4s;
+      animation-direction: reverse;
+    }
+    
+    .terminal-spinner-ring:nth-child(3) {
+      width: 50%;
+      height: 50%;
+      top: 25%;
+      left: 25%;
+      border-top-color: #facc15;
+      animation-duration: 0.8s;
+    }
+    
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    
+    /* Texto del spinner estilo terminal */
+    .terminal-spinner-text {
+      font-family: var(--font-mono, 'Courier New', monospace);
+      color: #4ade80;
+      font-size: 0.9rem;
+      letter-spacing: 2px;
+      animation: blink 1.2s ease-in-out infinite;
+      text-align: center;
+      padding: 0 20px;
+    }
+    
+    .terminal-spinner-subtext {
+      font-family: var(--font-mono, 'Courier New', monospace);
+      color: var(--text-dim, #666);
+      font-size: 0.75rem;
+      opacity: 0.6;
+      animation: blink 1.8s ease-in-out infinite;
+    }
+    
+    @keyframes blink {
+      0%, 100% { opacity: 0.6; }
+      50% { opacity: 1; }
+    }
+    
+    /* Spinner de carga para el historial */
+    .history-spinner {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 60px 20px;
+      gap: 20px;
+    }
+    
+    .history-spinner.active {
+      display: flex;
+    }
+    
+    .history-spinner .spinner-ring {
+      width: 40px;
+      height: 40px;
+      border: 3px solid var(--border-color);
+      border-top-color: #4f8cf7;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    
+    /* Terminal output */
+    .terminal {
+      background: var(--terminal-bg, #0a0a0a);
+      color: #e0e0e0;
+      font-family: var(--font-mono, 'Courier New', monospace);
+      font-size: 0.85rem;
+      padding: 16px;
+      min-height: 400px;
+      max-height: 500px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      line-height: 1.6;
+      border-radius: var(--border-radius);
+    }
+    
+    /* Personalizar scrollbar */
+    .terminal::-webkit-scrollbar {
+      width: 8px;
+    }
+    
+    .terminal::-webkit-scrollbar-track {
+      background: #1a1a1a;
+    }
+    
+    .terminal::-webkit-scrollbar-thumb {
+      background: #333;
+      border-radius: 4px;
+    }
+    
+    .terminal::-webkit-scrollbar-thumb:hover {
+      background: #444;
+    }
+    
+    /* Líneas de la terminal */
+    .terminal-line {
+      padding: 2px 0;
+      opacity: 0.9;
+    }
+    
+    .terminal-line.warn {
+      color: #facc15;
+    }
+    
+    .terminal-line.error {
+      color: #ef4444;
+    }
+    
+    .terminal-line.info {
+      color: #4f8cf7;
+    }
+    
+    .terminal-line.success {
+      color: #4ade80;
+    }
+    
+    /* Badge de estado del WebSocket */
+    .ws-status-badge {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 12px;
+      background: var(--bg-secondary, #1a1a1a);
+      border-radius: 20px;
+      border: 1px solid var(--border-color, #333);
+      font-size: 0.75rem;
+      font-family: var(--font-mono, monospace);
+    }
+    
+    .ws-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    
+    .ws-dot-on {
+      background: #4ade80;
+      box-shadow: 0 0 8px rgba(74, 222, 128, 0.4);
+    }
+    
+    .ws-dot-off {
+      background: #ef4444;
+      animation: pulse-dot 1.5s ease-in-out infinite;
+    }
+    
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    
+    /* Banner de inicio del servidor */
+    .console-starting {
+      display: none;
+      align-items: center;
+      justify-content: center;
+      gap: 12px;
+      padding: 12px;
+      background: rgba(74, 222, 128, 0.05);
+      border-bottom: 1px solid rgba(74, 222, 128, 0.1);
+      font-family: var(--font-mono, monospace);
+      color: #4ade80;
+      font-size: 0.85rem;
+    }
+    
+    .console-starting.active {
+      display: flex;
+    }
+    
+    .console-starting .spinner-inline {
+      width: 16px;
+      height: 16px;
+      border: 2px solid rgba(74, 222, 128, 0.2);
+      border-top-color: #4ade80;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      display: inline-block;
+    }
+  </style>
 </head>
 <body>
   <div id="initial-loader" class="initial-loader">
@@ -37,8 +278,8 @@
     <!-- Header General -->
     <div class="header">
       <div class="server-title">
-        <h2 id="current-server-name">Cargando...</h2>
-        <p id="current-server-info">Puerto: -- | RAM: --</p>
+        <h2 id="current-server-name"><span class="skeleton skeleton-title"></span></h2>
+        <p id="current-server-info"><span class="skeleton skeleton-sub"></span></p>
       </div>
       <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
         <!-- World Exists Indicator -->
@@ -68,44 +309,68 @@
       
       <!-- Consola -->
       <div class="card console-card" style="flex: 1; display: flex; flex-direction: column;">
-          <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
-            <h3 style="margin: 0; padding: 0; border: none; display: flex; align-items: center; gap: 10px;">
-              <i data-lucide="terminal" style="width:20px;height:20px;"></i>
-              Terminal del Servidor
-            </h3>
-            <div class="storage-toggle" style="display: flex; background: #000; border: 1px solid var(--border-color); border-radius: var(--border-radius); padding: 2px;">
-              <ui-button variant="toggle" accent="success" active id="btn-console-live">EN VIVO</ui-button>
-              <ui-button variant="toggle" accent="warning" id="btn-console-history">HISTORIAL (BD)</ui-button>
-            </div>
-            <div class="ws-status-badge" id="ws-status-badge">
-              <span class="ws-dot ws-dot-off" id="ws-status-dot"></span>
-              <span class="ws-status-label" id="ws-status-label">Conectando...</span>
-            </div>
+        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
+          <h3 style="margin: 0; padding: 0; border: none; display: flex; align-items: center; gap: 10px;">
+            <i data-lucide="terminal" style="width:20px;height:20px;"></i>
+            Terminal del Servidor
+          </h3>
+          <div class="storage-toggle" style="display: flex; background: #000; border: 1px solid var(--border-color); border-radius: var(--border-radius); padding: 2px;">
+            <ui-button variant="toggle" accent="success" active id="btn-console-live">EN VIVO</ui-button>
+            <ui-button variant="toggle" accent="warning" id="btn-console-history">HISTORIAL (BD)</ui-button>
           </div>
-          <div class="terminal-container" id="terminal-container">
-            <div id="terminal-output" class="terminal"></div>
-          </div>
-          
-          <div class="history-container" id="history-container" style="display: none;">
-            <div id="history-loading" class="files-loading" style="display: none; padding: 40px 0;">
-              <div class="files-spinner"></div>
-              <p>Cargando historial...</p>
-            </div>
-            <div id="history-table-wrapper" style="overflow-x: auto;">
-              <!-- Table will be injected here -->
-            </div>
-            <div id="history-pagination" style="display: flex; justify-content: center; gap: 15px; align-items: center; margin-top: 15px;">
-              <ui-button variant="secondary" size="sm" id="btn-history-prev" disabled>Anterior</ui-button>
-              <span id="history-page-info" style="font-family: var(--font-mono); font-size: 0.9rem; color: var(--text-dim);">Página 1 / 1</span>
-              <ui-button variant="secondary" size="sm" id="btn-history-next" disabled>Siguiente</ui-button>
-            </div>
-          </div>
-          
-          <div class="command-input">
-            <ui-input variant="command" id="command-input" placeholder="Escribe un comando (ej. /say Hola)" disabled></ui-input>
-            <ui-button variant="blue" id="btn-send-command" disabled style="width: auto;"><i data-lucide="send"></i> Enviar</ui-button>
+          <div class="ws-status-badge" id="ws-status-badge">
+            <span class="ws-dot ws-dot-off" id="ws-status-dot"></span>
+            <span class="ws-status-label" id="ws-status-label">Conectando...</span>
           </div>
         </div>
+        
+        <!-- Banner de inicio del servidor -->
+        <div id="console-starting" class="console-starting">
+          <span class="spinner-inline"></span>
+          Iniciando servidor...
+        </div>
+        
+        <!-- Terminal Container con Spinner integrado -->
+        <div class="terminal-container" id="terminal-container">
+          <!-- SPINNER DENTRO DE LA TERMINAL -->
+          <div class="terminal-spinner-overlay" id="terminal-spinner">
+            <div class="terminal-spinner">
+              <div class="terminal-spinner-ring"></div>
+              <div class="terminal-spinner-ring"></div>
+              <div class="terminal-spinner-ring"></div>
+            </div>
+            <div class="terminal-spinner-text" id="spinner-message">CARGANDO LOGS...</div>
+            <div class="terminal-spinner-subtext">Esperando conexión con el servidor</div>
+          </div>
+          
+          <!-- Output de la terminal -->
+          <div id="terminal-output" class="terminal"></div>
+        </div>
+        
+        <!-- Contenedor del Historial -->
+        <div class="history-container" id="history-container" style="display: none;">
+          <div id="history-spinner" class="history-spinner">
+            <div class="spinner-ring"></div>
+            <p style="font-family: var(--font-mono); color: var(--text-dim);">Cargando historial...</p>
+          </div>
+          <div id="history-table-wrapper" style="overflow-x: auto; display: none;">
+            <!-- Table will be injected here -->
+          </div>
+          <div id="history-pagination" style="display: flex; justify-content: center; gap: 15px; align-items: center; margin-top: 15px;">
+            <ui-button variant="secondary" size="sm" id="btn-history-prev" disabled>Anterior</ui-button>
+            <span id="history-page-info" style="font-family: var(--font-mono); font-size: 0.9rem; color: var(--text-dim);">Página 1 / 1</span>
+            <ui-button variant="secondary" size="sm" id="btn-history-next" disabled>Siguiente</ui-button>
+          </div>
+        </div>
+        
+        <!-- Comando Input -->
+        <div class="command-input">
+          <ui-input variant="command" id="command-input" placeholder="Escribe un comando (ej. /say Hola)" disabled></ui-input>
+          <ui-button variant="blue" id="btn-send-command" disabled style="width: auto; display: flex; align-items: center; gap: 8px;">
+            <i data-lucide="send"></i> Enviar
+          </ui-button>
+        </div>
+      </div>
       
     </div>
   </div>

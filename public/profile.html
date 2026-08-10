@@ -39,10 +39,17 @@
       </div>
     </div>
 
-    <div class="cards-grid" style="grid-template-columns: 1fr 1fr;">
+    <!-- Tabs (solo visibles en móvil) -->
+    <div class="profile-tabs" id="profile-tabs">
+      <button type="button" class="profile-tab active" data-tab="cuenta"><i data-lucide="user"></i> Cuenta</button>
+      <button type="button" class="profile-tab" data-tab="apariencia"><i data-lucide="image"></i> Apariencia</button>
+      <button type="button" class="profile-tab" data-tab="cuentas"><i data-lucide="layers"></i> Cuentas MC</button>
+    </div>
+
+    <div class="cards-grid profile-grid">
       
       <!-- Datos Personales -->
-      <div class="card">
+      <div class="card profile-tab-panel active" id="tab-panel-cuenta">
         <h3><i data-lucide="settings"></i> Datos de la Cuenta</h3>
         <form id="profile-form" style="display: flex; flex-direction: column; gap: 15px;">
           <div style="display: flex; flex-direction: column; gap: 8px;">
@@ -61,15 +68,15 @@
       </div>
 
       <!-- Foto de Perfil y Skin -->
-      <div class="card" style="display: flex; flex-direction: column; gap: 20px;">
+      <div class="card appearance-card profile-tab-panel" id="tab-panel-apariencia">
         <h3><i data-lucide="image"></i> Apariencia</h3>
         
-        <div style="display: flex; gap: 20px; align-items: center;">
-          <img id="avatar-preview" src="/default-avatar.png" alt="Avatar" style="width: 80px; height: 80px; border-radius: 2px; object-fit: cover; border: 1px solid var(--border-color); image-rendering: pixelated;">
-          <div style="flex: 1;">
+        <div class="profile-avatar-row" style="display: flex; gap: 20px; align-items: center;">
+          <img id="avatar-preview" src="/default-avatar.png" alt="Avatar" style="width: 80px; height: 80px; border-radius: 2px; object-fit: cover; border: 1px solid var(--border-color); image-rendering: pixelated; flex-shrink: 0;">
+          <div style="flex: 1; min-width: 0;">
             <label style="font-weight: 500; display: block; margin-bottom: 8px;">Foto de Perfil:</label>
             <ui-input type="file" id="upload-avatar" accept="image/*" hidden></ui-input>
-            <ui-button variant="secondary" onclick="document.getElementById('upload-avatar').click()">Subir Imagen</ui-button>
+            <ui-button variant="secondary" id="btn-upload-avatar" onclick="document.getElementById('upload-avatar').click()" style="width: 100%;">Subir Imagen</ui-button>
           </div>
         </div>
 
@@ -82,7 +89,7 @@
           
           <div style="margin-top: 20px; text-align: center;">
             <p style="margin-bottom: 10px; font-size: 0.9rem; color: var(--text-dim);">Previsualización 3D</p>
-            <div id="skin-viewer" style="width: 250px; height: 350px; margin: 0 auto; background: #000; border-radius: var(--border-radius); border: 1px solid var(--border-color);">
+            <div id="skin-viewer" class="skin-viewer-box" style="width: 250px; height: 350px; margin: 0 auto; background: #000; border-radius: var(--border-radius); border: 1px solid var(--border-color);">
               <!-- Skin view canvas -->
             </div>
           </div>
@@ -93,18 +100,20 @@
     </div>
 
     <!-- Cuentas de Minecraft Vinculadas -->
-    <div class="header" style="margin-top: 40px;">
-      <div class="server-title">
-        <h2>Cuentas de Minecraft Vinculadas</h2>
-        <p>Administra tus múltiples perfiles dentro del juego</p>
+    <div class="profile-tab-panel" id="tab-panel-cuentas">
+      <div class="header" style="margin-top: 40px;">
+        <div class="server-title">
+          <h2>Cuentas de Minecraft Vinculadas</h2>
+          <p>Administra tus múltiples perfiles dentro del juego</p>
+        </div>
+        <div class="server-actions">
+          <ui-button variant="success" id="btn-show-add-account" style="width: auto;">Vincular Nueva Cuenta</ui-button>
+        </div>
       </div>
-      <div class="server-actions">
-        <ui-button variant="success" id="btn-show-add-account" style="width: auto;">Vincular Nueva Cuenta</ui-button>
-      </div>
-    </div>
 
-    <div class="cards-grid" id="accounts-list" style="margin-top: 20px;">
-      <!-- Cuentas generadas por JS -->
+      <div class="cards-grid" id="accounts-list" style="margin-top: 20px;">
+        <!-- Cuentas generadas por JS -->
+      </div>
     </div>
 
   </div>
