@@ -143,6 +143,20 @@ export class MinecraftService extends EventEmitter {
       this.addLog("system", `Advertencia: el puerto ${this.config.port} es privilegiado (<1024). En Linux necesitás ejecutar el panel como root o dar CAP_NET_BIND_SERVICE a la JVM para bindearlo.`);
     }
 
+    // Auto-validate port and kill any zombie Java process using it
+    const conflictingPid = await this.findProcessByPort(this.config.port);
+    if (conflictingPid) {
+      this.addLog("system", `El puerto ${this.config.port} está en uso por el proceso Java (PID ${conflictingPid}). Intentando detenerlo para liberar el puerto...`);
+      try {
+        await this.killPid(conflictingPid);
+        this.addLog("system", `Proceso ${conflictingPid} terminado exitosamente.`);
+        // Wait a brief moment for the OS to fully release the port binding
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } catch (e: any) {
+        this.addLog("system", `Advertencia: No se pudo terminar el proceso ${conflictingPid}: ${e.message}`);
+      }
+    }
+
     this.addLog("system", `Starting Minecraft from ${this.config.directory}`);
 
     const args = ["-Xms" + this.config.memory, "-Xmx" + this.config.memory, "-jar", this.jarPath ?? env.paperJar, "nogui"];
