@@ -2,6 +2,7 @@ import { buildApp } from "./bootstrap/app";
 import { env } from "./config/env";
 import { prisma } from "./app/Models/prisma";
 import { serverManager } from "./app/Services/ServerManager";
+import { portForwardService } from "./app/Services/PortForwardService";
 
 async function main(): Promise<void> {
   const app = await buildApp();
@@ -17,10 +18,24 @@ async function main(): Promise<void> {
         directory: s.path,
         port: s.port,
         memory: s.memory,
-        version: s.version ?? undefined
+        version: s.version ?? undefined,
+        motd: s.motd ?? undefined,
+        mcIcon: s.mcIcon ?? undefined
       });
     }
     await serverManager.adoptAll();
+
+    // Restaurar forwarders de puertos activos (exposición 80/443 persistente)
+    for (const s of servers) {
+      if (s.forwardPort) {
+        try {
+          await portForwardService.start(s.id, s.forwardPort, s.port);
+          console.log(`[server] Puerto ${s.forwardPort} → ${s.port} expuesto para ${s.name}`);
+        } catch (e: any) {
+          console.error(`[server] No se pudo exponer el puerto ${s.forwardPort} para ${s.name}: ${e.message}`);
+        }
+      }
+    }
   } catch (error) {
     console.error("[server] No se pudieron adoptar procesos huérfanos:", error);
   }
@@ -29,7 +44,7 @@ async function main(): Promise<void> {
   for (const signal of ["SIGINT", "SIGTERM"] as const) {
     process.on(signal, () => {
       console.log(`[server] ${signal} recibido — deteniendo servidores...`);
-      void serverManager.stopAll().finally(() => process.exit(0));
+      void Promise.allSettled([serverManager.stopAll(), portForwardService.stopAll()]).finally(() => process.exit(0));
     });
   }
 

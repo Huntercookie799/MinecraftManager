@@ -35,6 +35,8 @@ export interface MinecraftServerConfig {
   port: number;
   memory: string;
   version?: string;
+  motd?: string;
+  mcIcon?: string;
 }
 
 type ServiceErrorCode =
@@ -129,6 +131,7 @@ export class MinecraftService extends EventEmitter {
     }
 
     await this.ensureServerProperties();
+    await this.ensureServerIcon();
     this.readServerProperties();
 
     this.state = "STARTING";
@@ -264,6 +267,9 @@ export class MinecraftService extends EventEmitter {
     const uptime = this.startedAt ? Math.floor((Date.now() - this.startedAt.getTime()) / 1000) : 0;
     const now = new Date();
 
+    // Estado honesto: si el proceso adoptado ya no existe, no es ONLINE.
+    const liveState: ServerState = this.adopted && !this.isPidAlive(this.adoptedPid) ? "OFFLINE" : this.state;
+
     const playersInfo: PlayerInfo[] = this.players.names.map((name) => {
       const session = this.playerSessions[name] ?? { total: 0, dimension: "unknown" as Dimension, x: null, y: null, z: null };
       const current = session.join ? (now.getTime() - session.join.getTime()) / 1000 : 0;
@@ -279,8 +285,8 @@ export class MinecraftService extends EventEmitter {
     });
 
     return {
-      status: this.state,
-      players: this.players.count,
+      status: liveState,
+      players: liveState === "OFFLINE" ? 0 : this.players.count,
       maxPlayers: this.players.max,
       playerNames: this.players.names,
       world: this.world,
@@ -411,18 +417,51 @@ export class MinecraftService extends EventEmitter {
 
   private async ensureServerProperties(): Promise<void> {
     const propPath = path.join(this.config.directory, "server.properties");
+    let content: string;
     try {
-      let content = await fs.readFile(propPath, "utf8");
-      if (!content.includes(`server-port=${this.config.port}`)) {
-        if (content.includes("server-port=")) {
-          content = content.replace(/server-port=\d+/, `server-port=${this.config.port}`);
-        } else {
-          content += `\nserver-port=${this.config.port}\n`;
-        }
-        await fs.writeFile(propPath, content, "utf8");
-      }
+      content = await fs.readFile(propPath, "utf8");
     } catch {
-      await fs.writeFile(propPath, `server-port=${this.config.port}\n`, "utf8");
+      content = "";
+    }
+
+    const original = content;
+
+    // Puerto asignado al servidor
+    if (content.includes("server-port=")) {
+      content = content.replace(/server-port=\d+/, `server-port=${this.config.port}`);
+    } else {
+      content += `\nserver-port=${this.config.port}\n`;
+    }
+
+    // MOTD personalizado (colores § y \n para salto de línea). Los saltos de
+    // línea reales se convierten a \n literal para que java.util.Properties los
+    // interprete como nueva línea dentro del valor.
+    if (this.config.motd) {
+      const motd = this.config.motd.replace(/\r?\n/g, "\\n");
+      if (content.includes("motd=")) {
+        content = content.replace(/^motd=.*$/m, () => `motd=${motd}`);
+      } else {
+        content += `\nmotd=${motd}\n`;
+      }
+    }
+
+    if (content !== original) {
+      await fs.writeFile(propPath, content, "utf8");
+    }
+  }
+
+  /** Copia el icono personalizado del servidor (server-icon.png 64x64) al
+   *  directorio del servidor, para que aparezca en la lista de servidores de
+   *  Minecraft. Se ejecuta DESPUÉS del restore de S3 (que podría traer un icono
+   *  viejo en el template/backup). */
+  private async ensureServerIcon(): Promise<void> {
+    if (!this.config.mcIcon) return;
+    const src = path.join(process.cwd(), "public", this.config.mcIcon);
+    const dest = path.join(this.config.directory, "server-icon.png");
+    try {
+      await fs.copyFile(src, dest);
+    } catch (e: any) {
+      this.addLog("system", `No se pudo copiar el icono del servidor: ${e.message}`);
     }
   }
 
@@ -541,6 +580,16 @@ export class MinecraftService extends EventEmitter {
    * archivo de log persistido y sigue el log por archivo.
    */
   async tryAdopt(): Promise<void> {
+    // Si el proceso adoptado ya no está vivo (la JVM se reinició por otro lado o
+    // crasheó), limpiar el estado para poder volver a adoptar por puerto.
+    if (this.adopted && !this.isPidAlive(this.adoptedPid)) {
+      this.addLog("system", `El proceso adoptado (PID ${this.adoptedPid}) ya no está vivo; se reintenta la adopción.`);
+      this.adopted = false;
+      this.adoptedPid = undefined;
+      this.adoptionChecked = false;
+      this.stopFileTail();
+      this.state = "OFFLINE";
+    }
     if (this.adoptionChecked || this.child) return;
     this.adoptionChecked = true;
     if (this.state !== "OFFLINE") return;

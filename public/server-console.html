@@ -363,9 +363,10 @@
           </div>
         </div>
         
-        <!-- Comando Input -->
-        <div class="command-input">
-          <ui-input variant="command" id="command-input" placeholder="Escribe un comando (ej. /say Hola)" disabled></ui-input>
+        <!-- Comando Input con autocompletado estilo Minecraft -->
+        <div class="command-input" id="command-input-row">
+          <div id="cmd-suggestions" class="cmd-suggestions" style="display: none;"></div>
+          <ui-input variant="command" id="command-input" placeholder="Escribe un comando (ej. /say Hola) — Tab para autocompletar" disabled></ui-input>
           <ui-button variant="blue" id="btn-send-command" disabled style="width: auto; display: flex; align-items: center; gap: 8px;">
             <i data-lucide="send"></i> Enviar
           </ui-button>

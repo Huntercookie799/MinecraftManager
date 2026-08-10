@@ -67,9 +67,9 @@
             <span class="time-value" id="time-value">06:00</span>
           </div>
         </div>
-        <div id="status-badge" class="status-badge offline">
+        <div id="status-badge" class="status-badge">
           <div class="dot"></div>
-          <span id="status-text" class="text">OFFLINE</span>
+          <span id="status-text" class="text"><span class="skeleton skeleton-sub" style="width:64px;height:12px;"></span></span>
         </div>
       </div>
     </div>
@@ -102,7 +102,7 @@
         <div class="card">
           <h3><i data-lucide="zap" style="width:20px;height:20px;vertical-align:middle;"></i> Acciones</h3>
           <div class="button-group">
-            <ui-button variant="success" id="btn-start"><i data-lucide="play" style="width:16px;height:16px;"></i> Iniciar Servidor</ui-button>
+            <ui-button variant="success" id="btn-start" disabled><i data-lucide="play" style="width:16px;height:16px;"></i> Iniciar Servidor</ui-button>
             <ui-button variant="warning" id="btn-restart" disabled><i data-lucide="rotate-cw" style="width:16px;height:16px;"></i> Reiniciar</ui-button>
             <ui-button variant="danger" id="btn-stop" disabled><i data-lucide="square" style="width:16px;height:16px;"></i> Detener</ui-button>
           </div>
@@ -111,15 +111,33 @@
         <!-- Información del servidor -->
         <div class="card info-card" id="server-details-card">
           <h3><i data-lucide="info" style="width:20px;height:20px;vertical-align:middle;"></i> Información</h3>
-          <p><strong><i data-lucide="users" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>Jugadores:</strong> <span id="info-players">0/0</span></p>
-          <p><strong><i data-lucide="clock" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>Uptime:</strong> <span id="info-uptime">0s</span></p>
-          <p><strong><i data-lucide="tag" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>Versión:</strong> <span id="info-version">--</span></p>
-          <p><strong><i data-lucide="wifi" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>Conexión:</strong> <span id="info-ip">--</span>
+          <p><strong><i data-lucide="users" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>Jugadores:</strong> <span id="info-players"><span class="skeleton skeleton-sub" style="width:64px;"></span></span></p>
+          <p><strong><i data-lucide="clock" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>Uptime:</strong> <span id="info-uptime"><span class="skeleton skeleton-sub" style="width:64px;"></span></span></p>
+          <p><strong><i data-lucide="tag" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>Versión:</strong> <span id="info-version"><span class="skeleton skeleton-sub" style="width:110px;"></span></span></p>
+          <p><strong><i data-lucide="wifi" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>Conexión:</strong> <span id="info-ip"><span class="skeleton skeleton-sub" style="width:110px;"></span></span>
             <button id="btn-copy-ip" class="btn-copy-ip" title="Copiar dirección" style="display:none;"><i data-lucide="copy" style="width:12px;height:12px;"></i> Copiar</button>
           </p>
           <div id="restricted-network-badge" class="restricted-network-badge" style="display:none;">✓ Accesible en red restringida (80/443)</div>
           <p id="srv-hint" class="srv-hint" style="display:none;"></p>
-          <p><strong><i data-lucide="compass" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>Mundo:</strong> <span id="info-world-status">--</span></p>
+
+          <hr style="border: none; border-top: 1px solid var(--border-color); margin: 15px 0;">
+          <p><strong><i data-lucide="plug-zap" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>Exponer por 80/443:</strong> <span id="forward-status" class="forward-status">Cargando...</span></p>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
+            <select id="forward-port-select" style="flex: 1; min-width: 130px; background: var(--bg-core); color: var(--text-main); border: 1px solid var(--border-color); border-radius: var(--border-radius); font-family: var(--font-mono); padding: 6px 8px;">
+              <option value="80">Puerto 80</option>
+              <option value="443">Puerto 443 (SSL)</option>
+              <option value="custom">Personalizado...</option>
+            </select>
+            <ui-input type="number" id="forward-port-custom" placeholder="Ej. 8080" style="display:none; width: 110px;"></ui-input>
+            <ui-button variant="success" size="sm" id="btn-forward-start" style="width:auto;"><i data-lucide="plug" style="width:14px;height:14px;"></i> Exponer</ui-button>
+            <ui-button variant="danger" size="sm" id="btn-forward-stop" disabled style="width:auto;"><i data-lucide="unplug" style="width:14px;height:14px;"></i> Detener</ui-button>
+          </div>
+          <p id="forward-url" class="srv-hint" style="display:none;"></p>
+          <p style="color: var(--text-dim); font-family: var(--font-mono); font-size: 0.72rem; margin-top: 8px;">
+            Reenvía el puerto público al servidor interno (<span id="forward-target">--</span>) sin reiniciarlo. Ideal para redes que solo abren 80/443.
+          </p>
+
+          <p><strong><i data-lucide="compass" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>Mundo:</strong> <span id="info-world-status"><span class="skeleton skeleton-sub" style="width:80px;"></span></span></p>
           <hr style="border: none; border-top: 1px solid var(--border-color); margin: 15px 0;">
           <p><strong><i data-lucide="paintbrush" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>Personalizar:</strong></p>
           <p style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;">
@@ -134,29 +152,69 @@
 
   <!-- Modal de Personalizacion -->
   <ui-modal id="edit-server-modal" title="Personalizar Servidor" style="display: none;">
-    <div>
-      <label>Nombre del Servidor:</label>
-      <ui-input id="edit-server-name" placeholder="Nombre visible"></ui-input>
-      
-      <label>Avatar (cuadrado, PNG/JPG):</label>
-      <ui-input type="file" id="edit-server-avatar" accept="image/png,image/jpeg,image/gif,image/webp" hidden></ui-input>
-      <div style="display: flex; align-items: center; gap: 10px; margin-top: 5px;">
-        <div id="edit-avatar-preview" style="width: 48px; height: 48px; background: var(--bg-core); border: 2px solid var(--border-color); border-radius: var(--border-radius); overflow: hidden; flex-shrink: 0;">
-          <img id="edit-avatar-preview-img" src="" style="width:48px;height:48px;object-fit:cover;display:none;">
+    <div class="edit-tabs" role="tablist">
+      <button type="button" class="edit-tab active" data-edit-tab="general">General</button>
+      <button type="button" class="edit-tab" data-edit-tab="minecraft">Minecraft</button>
+    </div>
+
+    <!-- Tab: General (nombre, avatar, color) -->
+    <div class="edit-tab-panel active" data-edit-panel="general">
+      <div class="edit-grid">
+        <div class="edit-col">
+          <label>Nombre del Servidor:</label>
+          <ui-input id="edit-server-name" placeholder="Nombre visible"></ui-input>
+
+          <label>Color de acento:</label>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <input type="color" id="edit-server-color" value="#55FF55" style="width: 50px; height: 36px; cursor: pointer;">
+            <span id="edit-server-color-hex" style="font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-dim);">#55FF55</span>
+          </div>
         </div>
-        <ui-button variant="secondary" id="btn-edit-avatar" style="width: auto; display: inline-flex; padding: 6px 12px;"><i data-lucide="image"></i> Subir avatar</ui-button>
+        <div class="edit-col">
+          <label>Avatar (panel):</label>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div id="edit-avatar-preview" style="width: 48px; height: 48px; background: var(--bg-core); border: 2px solid var(--border-color); border-radius: var(--border-radius); overflow: hidden; flex-shrink: 0;">
+              <img id="edit-avatar-preview-img" src="" style="width:48px;height:48px;object-fit:cover;display:none;">
+            </div>
+            <ui-button variant="secondary" id="btn-edit-avatar" style="width: auto; display: inline-flex; padding: 6px 12px;"><i data-lucide="image"></i> Subir avatar</ui-button>
+          </div>
+          <ui-input type="file" id="edit-server-avatar" accept="image/png,image/jpeg,image/gif,image/webp" hidden></ui-input>
+        </div>
       </div>
-      
-      <label>Color de acento:</label>
-      <div style="display: flex; align-items: center; gap: 10px;">
-        <input type="color" id="edit-server-color" value="#55FF55" style="width: 50px; height: 36px; cursor: pointer;">
-        <span id="edit-server-color-hex" style="font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-dim);">#55FF55</span>
+    </div>
+
+    <!-- Tab: Minecraft (icono server-icon.png + MOTD) -->
+    <div class="edit-tab-panel" data-edit-panel="minecraft">
+      <div class="edit-grid">
+        <div class="edit-col">
+          <label>Icono para Minecraft (64×64):</label>
+          <p class="edit-hint">Es el logo que aparece en la lista de servidores del juego (<code>server-icon.png</code>). Se aplica al iniciar el servidor.</p>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div id="edit-icon-preview" style="width: 64px; height: 64px; background: var(--bg-core); border: 2px solid var(--border-color); border-radius: 2px; overflow: hidden; flex-shrink: 0; image-rendering: pixelated;">
+              <img id="edit-icon-preview-img" src="" style="width:64px;height:64px;object-fit:cover;display:none;">
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 6px;">
+              <ui-button variant="secondary" id="btn-edit-icon" style="width: auto; display: inline-flex; padding: 6px 12px;"><i data-lucide="image"></i> Subir icono</ui-button>
+              <ui-button variant="danger" size="sm" id="btn-remove-icon" style="width: auto; display: none; padding: 4px 10px;"><i data-lucide="trash-2" style="width:13px;height:13px;"></i> Quitar</ui-button>
+            </div>
+          </div>
+          <ui-input type="file" id="edit-server-icon" accept="image/png,image/jpeg,image/webp" hidden></ui-input>
+        </div>
+        <div class="edit-col">
+          <label>MOTD (lista de servidores):</label>
+          <p class="edit-hint">Códigos <code>§c</code> (rojo), <code>§a</code> (verde), <code>§6</code> (dorado), <code>§l</code> (negrita), <code>§n</code> (subrayado)... y <code>\n</code> para segunda línea.</p>
+          <textarea id="edit-server-motd" rows="4" style="width: 100%; background: var(--bg-core); color: var(--text-main); border: 1px solid var(--border-color); border-radius: var(--border-radius); font-family: var(--font-mono); font-size: 0.8rem; padding: 8px; resize: vertical;" placeholder="§aMi Servidor §6Epico&#10;§7Discord: §bdiscord.gg/x"></textarea>
+          <div style="margin-top: 8px;">
+            <div class="edit-preview-label">Vista previa:</div>
+            <div id="motd-preview" class="motd-preview" style="min-height: 46px;"></div>
+          </div>
+        </div>
       </div>
-      
-      <div class="button-group" style="margin-top: 18px; flex-direction: row; gap: 10px;">
-        <ui-button variant="secondary" id="btn-cancel-edit-server">Cancelar</ui-button>
-        <ui-button variant="success" id="btn-save-server-settings">Guardar</ui-button>
-      </div>
+    </div>
+
+    <div class="button-group" style="margin-top: 20px; padding: 0 30px 26px; flex-direction: row; gap: 10px;">
+      <ui-button variant="secondary" id="btn-cancel-edit-server">Cancelar</ui-button>
+      <ui-button variant="success" id="btn-save-server-settings">Guardar</ui-button>
     </div>
   </ui-modal>
 

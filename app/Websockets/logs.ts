@@ -28,7 +28,9 @@ export async function registerLogSocket(app: FastifyInstance): Promise<void> {
       directory: server.path,
       port: server.port,
       memory: server.memory,
-      version: server.version
+      version: server.version,
+      motd: server.motd ?? undefined,
+      mcIcon: server.mcIcon ?? undefined
     });
 
     // Enviar snapshot de logs actuales

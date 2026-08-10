@@ -7,6 +7,9 @@ model Server {
   path        String      @unique
   avatar      String?
   accentColor String?
+  forwardPort Int?
+  motd        String?
+  mcIcon      String?
   createdAt   DateTime    @default(now())
   worlds      World[]
   logs        ServerLog[]

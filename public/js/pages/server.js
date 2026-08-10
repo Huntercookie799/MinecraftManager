@@ -35,6 +35,55 @@ function formatUptime(seconds) {
   return `${s}s`;
 }
 
+// ─── MOTD preview (colores de Minecraft) ────────────────────────────────
+const MC_COLORS = {
+  '0': '#000000', '1': '#0000AA', '2': '#00AA00', '3': '#00AAAA',
+  '4': '#AA0000', '5': '#AA00AA', '6': '#FFAA00', '7': '#AAAAAA',
+  '8': '#555555', '9': '#5555FF', 'a': '#55FF55', 'b': '#55FFFF',
+  'c': '#FF5555', 'd': '#FF55FF', 'e': '#FFFF55', 'f': '#FFFFFF'
+};
+
+function renderMotdPreview() {
+  const preview = DOM.get('motd-preview');
+  if (!preview) return;
+  const raw = (DOM.get('edit-server-motd')?.value || '').replace(/\r?\n/g, '\n').replace(/\\n/g, '\n');
+  preview.innerHTML = '';
+  let state = { color: null, bold: false, italic: false, underline: false, strike: false };
+  let buf = '';
+  const flush = () => {
+    if (!buf) return;
+    const span = document.createElement('span');
+    span.textContent = buf;
+    if (state.color) span.className = 'mc-color-' + state.color;
+    if (state.bold) span.classList.add('mc-bold');
+    if (state.italic) span.classList.add('mc-italic');
+    if (state.underline) span.classList.add('mc-underline');
+    if (state.strike) span.classList.add('mc-strike');
+    preview.appendChild(span);
+    buf = '';
+  };
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (ch === '§' && i + 1 < raw.length) {
+      const code = raw[i + 1].toLowerCase();
+      i++;
+      if (MC_COLORS[code]) { flush(); state.color = code; }
+      else if (code === 'l') { flush(); state.bold = true; }
+      else if (code === 'o') { flush(); state.italic = true; }
+      else if (code === 'n') { flush(); state.underline = true; }
+      else if (code === 'm') { flush(); state.strike = true; }
+      else if (code === 'r') { flush(); state = { color: null, bold: false, italic: false, underline: false, strike: false }; }
+      else buf += ch + raw[i];
+    } else {
+      buf += ch;
+    }
+  }
+  flush();
+  if (!preview.innerHTML) {
+    preview.innerHTML = '<span style="color: var(--text-dim);">Vista previa del MOTD...</span>';
+  }
+}
+
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -84,8 +133,19 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ─── Personalization ───────────────────────────────────────────────────
   const editModal = DOM.get('edit-server-modal');
-  
-  DOM.on('btn-edit-server', 'click', () => {
+  let removeIconFlag = false;
+
+  // Tabs del modal de personalización
+  const switchEditTab = (name) => {
+    document.querySelectorAll('.edit-tab').forEach(t => t.classList.toggle('active', t.dataset.editTab === name));
+    document.querySelectorAll('.edit-tab-panel').forEach(p => p.classList.toggle('active', p.dataset.editPanel === name));
+  };
+  document.querySelectorAll('.edit-tab').forEach(tab => {
+    tab.addEventListener('click', () => switchEditTab(tab.dataset.editTab));
+  });
+
+  DOM.on('btn-edit-server', 'click', async () => {
+    switchEditTab('general');
     // Cargar valores actuales
     const nameEl = DOM.get('current-server-name');
     if (nameEl) DOM.get('edit-server-name').value = nameEl.textContent;
@@ -99,6 +159,28 @@ document.addEventListener('DOMContentLoaded', async () => {
     const colorInput = DOM.get('edit-server-color');
     colorInput.value = currentColor;
     DOM.get('edit-server-color-hex').textContent = currentColor;
+
+    // MOTD + icono MC: obtener datos actuales del servidor
+    removeIconFlag = false;
+    try {
+      const res = await fetch('/api/server/', { headers: { 'Authorization': 'Bearer ' + API.token } });
+      const data = await res.json();
+      const s = (data.servers || []).find(x => String(x.id) === String(serverId));
+      if (s) {
+        const motdEl = DOM.get('edit-server-motd');
+        if (motdEl) { motdEl.value = s.motd || ''; renderMotdPreview(); }
+        const iconImg = DOM.get('edit-icon-preview-img');
+        const removeBtn = DOM.get('btn-remove-icon');
+        if (s.mcIcon) {
+          iconImg.src = s.mcIcon;
+          iconImg.style.display = 'block';
+          removeBtn.style.display = 'inline-flex';
+        } else {
+          iconImg.style.display = 'none';
+          removeBtn.style.display = 'none';
+        }
+      }
+    } catch {}
     DOM.show(editModal);
   });
   
@@ -123,20 +205,51 @@ document.addEventListener('DOMContentLoaded', async () => {
     const val = DOM.get('edit-server-color').value;
     DOM.get('edit-server-color-hex').textContent = val;
   });
-  
+
+  // Icono MC
+  DOM.on('btn-edit-icon', 'click', () => DOM.get('edit-server-icon').click());
+  DOM.on('edit-server-icon', 'change', () => {
+    const file = DOM.get('edit-server-icon').files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = DOM.get('edit-icon-preview-img');
+        img.src = e.target.result;
+        img.style.display = 'block';
+        DOM.get('btn-remove-icon').style.display = 'inline-flex';
+      };
+      reader.readAsDataURL(file);
+    }
+  });
+  DOM.on('btn-remove-icon', 'click', () => {
+    removeIconFlag = true;
+    const img = DOM.get('edit-icon-preview-img');
+    img.style.display = 'none';
+    DOM.get('btn-remove-icon').style.display = 'none';
+    DOM.get('edit-server-icon').value = '';
+  });
+
+  // MOTD
+  DOM.on('edit-server-motd', 'input', renderMotdPreview);
+
   DOM.on('btn-save-server-settings', 'click', async () => {
     UIProgress.show('Guardando...');
     const name = DOM.get('edit-server-name').value.trim();
     const color = DOM.get('edit-server-color').value;
+    const motd = DOM.get('edit-server-motd').value;
     const avatarFile = DOM.get('edit-server-avatar').files[0];
+    const iconFile = DOM.get('edit-server-icon').files[0];
     
-    // Build form data if there's an avatar, else JSON
+    // Build form data if there's any file, else JSON
     let response;
-    if (avatarFile) {
+    if (avatarFile || iconFile || removeIconFlag) {
       const formData = new FormData();
       if (name) formData.append('name', name);
       formData.append('accentColor', color);
-      formData.append('avatar', avatarFile);
+      formData.append('motd', motd);
+      if (avatarFile) formData.append('avatar', avatarFile);
+      if (iconFile) formData.append('icon', iconFile);
+      if (removeIconFlag) formData.append('removeIcon', '1');
       response = await fetch(`/api/server/${serverId}/settings`, {
         method: 'PUT',
         headers: { 'Authorization': 'Bearer ' + API.token },
@@ -149,7 +262,7 @@ document.addEventListener('DOMContentLoaded', async () => {
           'Authorization': 'Bearer ' + API.token,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ name, accentColor: color })
+        body: JSON.stringify({ name, accentColor: color, motd })
       });
     }
     
@@ -246,6 +359,124 @@ document.addEventListener('DOMContentLoaded', async () => {
       setTimeout(() => { btn.innerHTML = original; }, 1500);
     } catch {
       // clipboard no disponible (p.ej. http no seguro)
+    }
+  });
+
+  // ─── Exposición 80/443 (forwarder TCP) ────────────────────────────────────
+  const forwardSelect = DOM.get('forward-port-select');
+  const forwardCustom = DOM.get('forward-port-custom');
+  const btnForwardStart = DOM.get('btn-forward-start');
+  const btnForwardStop = DOM.get('btn-forward-stop');
+
+  // Almacenar el estado actual del forwarder (lo carga ServerHeader con /forward)
+  let forwardState = { active: false, publicPort: null, targetPort: null, configuredPort: null };
+  const setForwardState = (s) => {
+    forwardState = { ...forwardState, ...s };
+    const statusEl = DOM.get('forward-status');
+    const urlEl = DOM.get('forward-url');
+    const targetEl = DOM.get('forward-target');
+    if (forwardState.active && forwardState.publicPort) {
+      statusEl.textContent = 'ACTIVO';
+      statusEl.className = 'forward-status forward-active';
+      btnForwardStart.setAttribute('disabled', 'true');
+      btnForwardStop.removeAttribute('disabled');
+      const url = `${window.location.hostname}:${forwardState.publicPort}`;
+      urlEl.style.display = 'block';
+      urlEl.innerHTML = `🔗 Jugadores entran por: <code>${url}</code> <button id="btn-copy-forward" class="btn-copy-ip" title="Copiar"><i data-lucide="copy" style="width:12px;height:12px;"></i> Copiar</button>`;
+      if (window.lucide) lucide.createIcons();
+      DOM.on('btn-copy-forward', 'click', async () => {
+        try {
+          await navigator.clipboard.writeText(url);
+          const b = DOM.get('btn-copy-forward');
+          b.innerHTML = '✓';
+          setTimeout(() => { b.innerHTML = '<i data-lucide="copy" style="width:12px;height:12px;"></i> Copiar'; if (window.lucide) lucide.createIcons(); }, 1500);
+        } catch {}
+      });
+    } else {
+      statusEl.textContent = forwardState.configuredPort ? `Configurado (puerto ${forwardState.configuredPort})` : 'Inactivo';
+      statusEl.className = 'forward-status';
+      btnForwardStart.removeAttribute('disabled');
+      btnForwardStop.setAttribute('disabled', 'true');
+      urlEl.style.display = 'none';
+      if (forwardState.configuredPort) {
+        forwardSelect.value = String(forwardState.configuredPort) === '80' || String(forwardState.configuredPort) === '443' ? String(forwardState.configuredPort) : 'custom';
+        if (String(forwardState.configuredPort) !== '80' && String(forwardState.configuredPort) !== '443') {
+          forwardCustom.style.display = 'inline-block';
+          forwardCustom.value = String(forwardState.configuredPort);
+        }
+      }
+    }
+    if (targetEl) targetEl.textContent = `127.0.0.1:${forwardState.targetPort ?? '--'}`;
+  };
+
+  // Cargar estado inicial del forwarder
+  try {
+    const res = await fetch(`/api/server/${serverId}/forward`, { headers: { 'Authorization': 'Bearer ' + API.token } });
+    if (res.ok) setForwardState(await res.json());
+  } catch {}
+
+  // Refrescar el estado del forwarder junto con el polling del header
+  document.addEventListener('serverStatusUpdate', () => {
+    if (!forwardState.active) {
+      fetch(`/api/server/${serverId}/forward`, { headers: { 'Authorization': 'Bearer ' + API.token } })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d) setForwardState(d); })
+        .catch(() => {});
+    }
+  });
+
+  DOM.on(forwardSelect, 'change', () => {
+    forwardCustom.style.display = forwardSelect.value === 'custom' ? 'inline-block' : 'none';
+  });
+
+  DOM.on(btnForwardStart, 'click', async () => {
+    let publicPort;
+    if (forwardSelect.value === 'custom') {
+      publicPort = parseInt(forwardCustom.value, 10);
+    } else {
+      publicPort = parseInt(forwardSelect.value, 10);
+    }
+    if (!publicPort || publicPort < 1 || publicPort > 65535) {
+      alert('Ingresá un puerto válido (1-65535)');
+      return;
+    }
+    UIProgress.show('Exponiendo puerto...');
+    try {
+      const res = await fetch(`/api/server/${serverId}/forward`, {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + API.token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ publicPort })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setForwardState({ active: true, publicPort: data.publicPort, targetPort: data.targetPort, configuredPort: publicPort });
+      } else {
+        alert(data.error || 'Error al exponer el puerto');
+      }
+    } catch (e) {
+      alert('Error de red al exponer el puerto');
+    } finally {
+      UIProgress.hide();
+    }
+  });
+
+  DOM.on(btnForwardStop, 'click', async () => {
+    UIProgress.show('Deteniendo exposición...');
+    try {
+      const res = await fetch(`/api/server/${serverId}/forward`, {
+        method: 'DELETE',
+        headers: { 'Authorization': 'Bearer ' + API.token }
+      });
+      if (res.ok) {
+        setForwardState({ active: false, publicPort: null, configuredPort: null });
+      } else {
+        const data = await res.json();
+        alert(data.error || 'Error al detener la exposición');
+      }
+    } catch {
+      alert('Error de red al detener la exposición');
+    } finally {
+      UIProgress.hide();
     }
   });
 });

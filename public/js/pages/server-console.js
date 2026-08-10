@@ -1,6 +1,7 @@
 import { API } from '../utils/api.js';
 import { DOM } from '../utils/dom.js';
 import { ServerModel } from '../models/Server.js';
+import { CommandAutocomplete } from '../utils/CommandAutocomplete.js';
 import '../components/index.js';
 import { ServerHeader } from './server-header.js';
 
@@ -13,6 +14,93 @@ function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+// ─── Colores ANSI → HTML (los logs de Minecraft traen secuencias \x1b[...m) ──
+const ANSI_BASIC = {
+  '30': '#000000', '31': '#AA0000', '32': '#00AA00', '33': '#AA5500',
+  '34': '#0000AA', '35': '#AA00AA', '36': '#00AAAA', '37': '#AAAAAA',
+  '90': '#555555', '91': '#FF5555', '92': '#55FF55', '93': '#FFFF55',
+  '94': '#5555FF', '95': '#FF55FF', '96': '#55FFFF', '97': '#FFFFFF'
+};
+
+const ANSI_16 = [0x000000, 0x800000, 0x008000, 0x808000, 0x000080, 0x800080, 0x008080, 0xc0c0c0,
+                 0x808080, 0xff0000, 0x00ff00, 0xffff00, 0x0000ff, 0xff00ff, 0x00ffff, 0xffffff];
+
+function xterm256ToHex(n) {
+  if (n < 16) return '#' + ANSI_16[n].toString(16).padStart(6, '0');
+  if (n < 232) {
+    const i = n - 16;
+    const levels = [0, 95, 135, 175, 215, 255];
+    const r = levels[Math.floor(i / 36)], g = levels[Math.floor((i % 36) / 6)], b = levels[i % 6];
+    return '#' + [r, g, b].map(v => v.toString(16).padStart(2, '0')).join('');
+  }
+  const gray = 8 + (n - 232) * 10;
+  const h = gray.toString(16).padStart(2, '0');
+  return '#' + h + h + h;
+}
+
+// Convierte texto con secuencias ANSI en HTML con spans de color
+function ansiToHtml(text) {
+  const re = /\x1b\[([0-9;]*)m/g;
+  let html = '';
+  let open = false;
+  let last = 0;
+  let m;
+  let color = null;
+  let bold = false;
+
+  const apply = (codes) => {
+    if (codes[0] === 0) { color = null; bold = false; }
+    else if (codes[0] === 1) bold = true;
+    else if (codes[0] === 22) bold = false;
+    else if (codes[0] === 38 && codes[1] === 2) color = `rgb(${codes[2]},${codes[3]},${codes[4]})`;
+    else if (codes[0] === 38 && codes[1] === 5) color = xterm256ToHex(codes[2]);
+    else if (ANSI_BASIC[codes[0]]) color = ANSI_BASIC[codes[0]];
+    else if (codes[0] === 39) color = null;
+  };
+
+  while ((m = re.exec(text))) {
+    html += escapeHtml(text.slice(last, m.index));
+    last = m.index + m[0].length;
+    apply(m[1].split(';').map(Number));
+    if (open) { html += '</span>'; open = false; }
+    if (color || bold) {
+      const s = [];
+      if (color) s.push(`color:${color}`);
+      if (bold) s.push('font-weight:700');
+      html += `<span style="${s.join(';')}">`;
+      open = true;
+    }
+  }
+  html += escapeHtml(text.slice(last));
+  if (open) html += '</span>';
+  return html;
+}
+
+// Formato estándar de Purpur/Paper: [HH:MM:SS NIVEL]: mensaje
+const LOG_FORMAT_RE = /^(\[\d{2}:\d{2}:\d{2} )(\[?[A-Z]+\]?)(\]: )(.*)$/s;
+const LOG_LEVEL_COLORS = {
+  'INFO': '#55FFFF', 'WARN': '#FFAA00', 'ERROR': '#FF5555', 'FATAL': '#FF5555',
+  'DEBUG': '#AAAAAA', 'TRACE': '#888888'
+};
+
+// Renderiza una línea de log con estilo (timestamp, nivel y colores ANSI)
+function renderLogLine(line) {
+  const m = line.match(LOG_FORMAT_RE);
+  if (m) {
+    const [, ts, level, sep, rest] = m;
+    const levelColor = LOG_LEVEL_COLORS[level] || '#AAAAAA';
+    return `<span class="log-ts">${escapeHtml(ts)}</span>` +
+      `<span class="log-level" style="color:${levelColor}">${escapeHtml(level)}</span>` +
+      `<span class="log-sep">${escapeHtml(sep)}</span>` +
+      ansiToHtml(rest);
+  }
+  // Comandos enviados desde el panel
+  if (line.startsWith('>')) {
+    return `<span style="color:#55FFFF;font-weight:700">${ansiToHtml(line)}</span>`;
+  }
+  return ansiToHtml(line);
 }
 
 // ─── Main ────────────────────────────────────────────────────────────────────
@@ -140,6 +228,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   }
   
+  // ─── Autocompletado de comandos (estilo Minecraft) ────────────────────────
+  // Utilidad reutilizable en public/js/utils/CommandAutocomplete.js
+  const autocomplete = new CommandAutocomplete(commandInput, {
+    container: DOM.get('cmd-suggestions')
+  });
+  autocomplete.attach();
+
   // ─── UI Toggles & History ──────────────────────────────────────────────────
   
   DOM.on(btnLive, 'click', () => {
@@ -337,11 +432,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
     
     const div = DOM.create('div', 'terminal-line');
-    if (line.includes('WARN')) div.classList.add('warn');
-    else if (line.includes('ERROR') || line.includes('Exception')) div.classList.add('error');
-    else if (line.includes('INFO')) div.classList.add('info');
-    else if (line.includes('Done') || line.includes('Started')) div.classList.add('success');
-    div.textContent = line;
+    // Las líneas con formato estándar (timestamp+nivel) se colorean por span;
+    // las de sistema conservan la clase por nivel.
+    if (!LOG_FORMAT_RE.test(line)) {
+      if (line.includes('WARN')) div.classList.add('warn');
+      else if (line.includes('ERROR') || line.includes('Exception')) div.classList.add('error');
+      else if (line.includes('Done') || line.includes('Started')) div.classList.add('success');
+    }
+    div.innerHTML = renderLogLine(line);
     terminalOutput.appendChild(div);
     if (terminalOutput.childNodes.length > 500) terminalOutput.removeChild(terminalOutput.firstChild);
     terminalOutput.scrollTop = terminalOutput.scrollHeight;

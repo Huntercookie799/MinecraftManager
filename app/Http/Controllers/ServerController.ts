@@ -9,6 +9,8 @@ import { env } from "../../../config/env";
 import fs from "node:fs/promises";
 import { S3SyncService } from "../../Services/S3SyncService";
 import { jarManager } from "../../Services/JarManager";
+import { Jimp } from "jimp";
+import { portForwardService } from "../../Services/PortForwardService";
 
 interface LogsQuery {
   sinceId?: string;
@@ -101,7 +103,9 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
         directory: s.path,
         port: s.port,
         memory: s.memory,
-        version: s.version ?? undefined
+        version: s.version ?? undefined,
+        motd: s.motd ?? undefined,
+        mcIcon: s.mcIcon ?? undefined
       });
       await service.tryAdopt();
       const worldExists = await checkWorldExists(s.path);
@@ -151,59 +155,92 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
     }
   });
 
-  // Update server settings (name, avatar, accent color)
+  // Update server settings (name, avatar, accent color, MOTD, server icon)
   app.put<{ Params: { id: string } }>("/:id/settings", async (request, reply) => {
     const id = parseInt(request.params.id, 10);
     const server = await prisma.server.findUnique({ where: { id } });
     if (!server) return reply.code(404).send({ error: "Server not found" });
 
-    // Multipart upload for avatar
-    let avatarUrl: string | null = null;
     const contentType = request.headers["content-type"] || "";
-    
-    if (contentType.includes("multipart/form-data")) {
-      const data = await request.file();
-      if (data) {
-        const ext = path.extname(data.filename) || ".png";
-        if (![".png", ".jpg", ".jpeg", ".gif", ".webp"].includes(ext.toLowerCase())) {
-          return reply.code(400).send({ error: "Invalid image format. Allowed: png, jpg, jpeg, gif, webp" });
-        }
-        const fileName = `server_${id}_avatar${ext}`;
-        const uploadDir = path.join(__dirname, "..", "..", "..", "public", "server-icons");
-        await fs.mkdir(uploadDir, { recursive: true });
-        const dest = path.join(uploadDir, fileName);
-        await pipeline(data.file, createWriteStream(dest));
-        avatarUrl = `/server-icons/${fileName}`;
+    const updateData: any = {};
+    let avatarUrl: string | null = null;
+    let iconUrl: string | null = null;
 
-        // Delete old avatar if exists
-        if (server.avatar) {
-          const oldPath = path.join(__dirname, "..", "..", "..", "public", server.avatar);
-          await fs.rm(oldPath, { force: true }).catch(() => {});
+    const serverIconsDir = path.join(__dirname, "..", "..", "..", "public", "server-icons");
+    await fs.mkdir(serverIconsDir, { recursive: true });
+
+    if (contentType.includes("multipart/form-data")) {
+      for await (const part of request.parts()) {
+        if (part.type === "file") {
+          const field = part.fieldname;
+          const ext = path.extname(part.filename || "") || ".png";
+          if (![".png", ".jpg", ".jpeg", ".gif", ".webp"].includes(ext.toLowerCase())) {
+            return reply.code(400).send({ error: "Invalid image format. Allowed: png, jpg, jpeg, gif, webp" });
+          }
+          const fileName = `server_${id}_${field}${ext}`;
+          const dest = path.join(serverIconsDir, fileName);
+          await pipeline(part.file, createWriteStream(dest));
+
+          if (field === "avatar") {
+            avatarUrl = `/server-icons/${fileName}`;
+            if (server.avatar) {
+              await fs.rm(path.join(__dirname, "..", "..", "..", "public", server.avatar), { force: true }).catch(() => {});
+            }
+          } else if (field === "icon") {
+            // server-icon.png debe ser 64x64 PNG — redimensionar con Jimp
+            try {
+              const image = await Jimp.read(dest);
+              image.resize({ w: 64, h: 64 });
+              await image.write(dest as any);
+            } catch (e) {
+              return reply.code(400).send({ error: "Imagen de icono inválida (se requiere PNG/JPG)" });
+            }
+            iconUrl = `/server-icons/${fileName}`;
+            if (server.mcIcon) {
+              await fs.rm(path.join(__dirname, "..", "..", "..", "public", server.mcIcon), { force: true }).catch(() => {});
+            }
+          }
+        } else {
+          // Campo de texto del formulario
+          if (part.fieldname === "name" && part.value) updateData.name = String(part.value);
+          if (part.fieldname === "accentColor" && part.value) updateData.accentColor = String(part.value);
+          if (part.fieldname === "motd" && part.value !== undefined) updateData.motd = String(part.value);
+          if (part.fieldname === "removeIcon" && part.value) {
+            if (server.mcIcon) {
+              await fs.rm(path.join(__dirname, "..", "..", "..", "public", server.mcIcon), { force: true }).catch(() => {});
+            }
+            updateData.mcIcon = null;
+          }
         }
       }
     }
 
-    // Accept JSON body for name & accentColor update
-    let updateData: any = {};
+    // Accept JSON body for name / accentColor / motd update
     if (contentType.includes("application/json")) {
       const body = request.body as any || {};
-      if (body.name && body.name !== server.name) {
-        // Validate name uniqueness
-        const existing = await prisma.server.findUnique({ where: { name: body.name } });
-        if (existing && existing.id !== id) {
-          return reply.code(409).send({ error: "A server with that name already exists" });
-        }
-        updateData.name = body.name;
+      if (body.name && body.name !== server.name) updateData.name = body.name;
+      if (body.accentColor) updateData.accentColor = body.accentColor;
+      if (body.motd !== undefined) updateData.motd = String(body.motd);
+    }
+
+    // ── Validaciones ──────────────────────────────────────────────────────
+    if (updateData.name) {
+      const existing = await prisma.server.findUnique({ where: { name: updateData.name } });
+      if (existing && existing.id !== id) {
+        return reply.code(409).send({ error: "A server with that name already exists" });
       }
-      if (body.accentColor) {
-        if (!/^#[0-9a-fA-F]{6}$/.test(body.accentColor)) {
-          return reply.code(400).send({ error: "Invalid accent color. Use hex format e.g. #FF55FF" });
-        }
-        updateData.accentColor = body.accentColor;
-      }
+    }
+    if (updateData.accentColor && !/^#[0-9a-fA-F]{6}$/.test(updateData.accentColor)) {
+      return reply.code(400).send({ error: "Invalid accent color. Use hex format e.g. #FF55FF" });
+    }
+    if (updateData.motd !== undefined) {
+      const motd = String(updateData.motd);
+      if (motd.length > 600) return reply.code(400).send({ error: "MOTD demasiado largo (máx. 600 caracteres)" });
+      updateData.motd = motd.trim() === "" ? null : motd;
     }
 
     if (avatarUrl) updateData.avatar = avatarUrl;
+    if (iconUrl) updateData.mcIcon = iconUrl;
 
     if (Object.keys(updateData).length === 0) {
       return reply.code(400).send({ error: "No fields to update" });
@@ -219,10 +256,63 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
     const server = await prisma.server.findUnique({ where: { id } });
     if (!server) return reply.code(404).send({ error: "Server not found" });
 
+    await portForwardService.stop(id);
     serverManager.removeService(id);
     await prisma.server.delete({ where: { id } });
     await fs.rm(server.path, { recursive: true, force: true }).catch(() => {});
     
+    return { success: true };
+  });
+
+  // ── Port Forwarding (exponer en 80/443 sin reiniciar) ────────────────────
+  app.get<{ Params: { id: string } }>("/:id/forward", async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const server = await prisma.server.findUnique({ where: { id } });
+    if (!server) return reply.code(404).send({ error: "Server not found" });
+    const info = portForwardService.getInfo(id);
+    return {
+      configuredPort: server.forwardPort,
+      active: !!info,
+      publicPort: info?.publicPort ?? null,
+      targetPort: info?.targetPort ?? server.port
+    };
+  });
+
+  app.post<{ Params: { id: string }, Body: { publicPort?: number } }>("/:id/forward", async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const server = await prisma.server.findUnique({ where: { id } });
+    if (!server) return reply.code(404).send({ error: "Server not found" });
+
+    const publicPort = Number(request.body?.publicPort);
+    if (!Number.isInteger(publicPort) || publicPort < 1 || publicPort > 65535) {
+      return reply.code(400).send({ error: "Puerto público inválido" });
+    }
+    if (publicPort === server.port) {
+      return reply.code(400).send({ error: "El puerto público no puede ser igual al puerto del servidor" });
+    }
+
+    try {
+      await portForwardService.start(id, publicPort, server.port);
+    } catch (e: any) {
+      if (e.code === "EADDRINUSE") {
+        return reply.code(409).send({ error: `El puerto ${publicPort} ya está en uso por otro proceso` });
+      }
+      if (e.code === "EACCES") {
+        return reply.code(403).send({ error: `Permiso denegado para el puerto ${publicPort} (<1024): en Linux se necesita root o CAP_NET_BIND_SERVICE` });
+      }
+      return reply.code(500).send({ error: e.message });
+    }
+
+    await prisma.server.update({ where: { id }, data: { forwardPort: publicPort } });
+    return { success: true, publicPort, targetPort: server.port };
+  });
+
+  app.delete<{ Params: { id: string } }>("/:id/forward", async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const server = await prisma.server.findUnique({ where: { id } });
+    if (!server) return reply.code(404).send({ error: "Server not found" });
+    await portForwardService.stop(id);
+    await prisma.server.update({ where: { id }, data: { forwardPort: null } });
     return { success: true };
   });
 
@@ -238,7 +328,9 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
       directory: server.path,
       port: server.port,
       memory: server.memory,
-      version: server.version
+      version: server.version,
+      motd: server.motd ?? undefined,
+      mcIcon: server.mcIcon ?? undefined
     });
     await service.tryAdopt();
     
@@ -263,7 +355,9 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
       directory: server.path,
       port: server.port,
       memory: server.memory,
-      version: server.version
+      version: server.version,
+      motd: server.motd ?? undefined,
+      mcIcon: server.mcIcon ?? undefined
     });
     await service.tryAdopt();
 
