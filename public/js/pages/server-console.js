@@ -106,11 +106,14 @@ function renderLogLine(line) {
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 document.addEventListener('DOMContentLoaded', async () => {
-  await ServerHeader.init();
-
   const urlParams = new URLSearchParams(window.location.search);
   const serverId = urlParams.get('id');
   if (!serverId) return;
+
+  // El header (nombre/avatar/estado) se inicializa en paralelo, SIN bloquear la
+  // conexión del WebSocket: los logs llegan por WS, no del header. Así el
+  // terminal se llena al instante aunque el header tarde.
+  ServerHeader.init().catch(() => {});
 
   const terminalOutput = DOM.get('terminal-output');
   const commandInput = DOM.get('command-input');
@@ -137,26 +140,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // ─── Control del Spinner ──────────────────────────────────────────────────
   
-  function showSpinner(message = 'CARGANDO LOGS...', subMessage = 'Esperando conexión con el servidor') {
-    if (terminalSpinner) {
-      terminalSpinner.classList.add('active');
-      if (spinnerMessage) spinnerMessage.textContent = message;
-      const subText = terminalSpinner.querySelector('.terminal-spinner-subtext');
-      if (subText) subText.textContent = subMessage;
-    }
-  }
-  
-  function hideSpinner() {
-    if (terminalSpinner) {
-      terminalSpinner.classList.remove('active');
-    }
-  }
-  
-  function updateSpinnerMessage(message, subMessage) {
-    if (spinnerMessage) spinnerMessage.textContent = message;
-    const subText = terminalSpinner?.querySelector('.terminal-spinner-subtext');
-    if (subText && subMessage) subText.textContent = subMessage;
-  }
+  function showSpinner(message = 'CARGANDO LOGS...', subMessage = 'Esperando conexión con el servidor') {}
+  function hideSpinner() {}
+  function updateSpinnerMessage(message, subMessage) {}
 
   // ─── Events from Header ────────────────────────────────────────────────────
 
@@ -255,12 +241,59 @@ document.addEventListener('DOMContentLoaded', async () => {
     btnLive.removeAttribute('active');
 
     terminalContainer.style.display = 'none';
-    historyContainer.style.display = 'block';
+    historyContainer.style.display = 'flex';
     historyTableWrapper.style.display = 'none';
     historySpinner.classList.add('active');
 
     loadHistory(1);
   });
+
+  const historySearchInput = DOM.get('history-search-input');
+  const btnHistorySearch = DOM.get('btn-history-search');
+  const chipsContainer = DOM.get('history-search-chips');
+  const searchContainer = DOM.get('history-search-container');
+  let searchFilters = [];
+
+  if (searchContainer && historySearchInput) {
+    historySearchInput.addEventListener('focus', () => searchContainer.style.borderColor = '#4f8cf7');
+    historySearchInput.addEventListener('blur', () => searchContainer.style.borderColor = 'var(--border-color, #333)');
+  }
+
+  function renderSearchChips() {
+    if (!chipsContainer) return;
+    chipsContainer.innerHTML = '';
+    searchFilters.forEach((filter, index) => {
+      const chip = DOM.create('div', 'search-chip');
+      chip.style.cssText = 'background: rgba(79, 140, 247, 0.15); color: #4f8cf7; padding: 2px 8px; border-radius: 12px; font-size: 0.75rem; display: flex; align-items: center; gap: 5px; border: 1px solid rgba(79,140,247,0.3);';
+      chip.innerHTML = `<span>${escapeHtml(filter)}</span><button class="remove-chip" style="background:none;border:none;color:#4f8cf7;cursor:pointer;padding:0;font-size:14px;line-height:1;">&times;</button>`;
+      chip.querySelector('.remove-chip').addEventListener('click', () => {
+        searchFilters.splice(index, 1);
+        renderSearchChips();
+        loadHistory(1);
+      });
+      chipsContainer.appendChild(chip);
+    });
+  }
+
+  if (btnHistorySearch && historySearchInput) {
+    DOM.on(btnHistorySearch, 'click', () => loadHistory(1));
+    DOM.on(historySearchInput, 'keydown', (e) => {
+      if (e.key === 'Enter') {
+        if (e.ctrlKey) {
+          const val = (historySearchInput.querySelector('input')?.value || historySearchInput.value || '').trim();
+          if (val && !searchFilters.includes(val)) {
+            searchFilters.push(val);
+            renderSearchChips();
+            if (historySearchInput.querySelector('input')) historySearchInput.querySelector('input').value = '';
+            else historySearchInput.value = '';
+            loadHistory(1);
+          }
+        } else {
+          loadHistory(1);
+        }
+      }
+    });
+  }
 
   async function loadHistory(page) {
     historyPage = page;
@@ -274,7 +307,21 @@ document.addEventListener('DOMContentLoaded', async () => {
     prevBtn.setAttribute('disabled', 'true');
     nextBtn.setAttribute('disabled', 'true');
 
-    const data = await API.call(`/${serverId}/logs/history?page=${page}&limit=${historyLimit}`, 'GET', null, '/api/server', true);
+    const searchVal = historySearchInput ? (historySearchInput.querySelector('input')?.value || historySearchInput.value || '').trim() : '';
+    let url = `/${serverId}/logs/history?page=${page}&limit=${historyLimit}`;
+    
+    const allSearches = [...searchFilters];
+    if (searchVal && !allSearches.includes(searchVal)) {
+      allSearches.push(searchVal);
+    }
+    
+    if (allSearches.length > 0) {
+      allSearches.forEach(s => {
+        url += `&search=${encodeURIComponent(s)}`;
+      });
+    }
+
+    const data = await API.call(url, 'GET', null, '/api/server', true);
     
     // Ocultar spinner
     historySpinner.classList.remove('active');
@@ -290,40 +337,22 @@ document.addEventListener('DOMContentLoaded', async () => {
       return;
     }
 
-    // Build Table
+    // Build Terminal layout for history
     const rows = [];
-    rows.push(`
-      <table class="r2-table">
-        <thead>
-          <tr>
-            <th style="width: 150px;">Fecha</th>
-            <th style="width: 80px;">Nivel</th>
-            <th>Mensaje</th>
-          </tr>
-        </thead>
-        <tbody>
-    `);
+    rows.push(`<div class="terminal" style="height: 100%; border-radius: 0; padding: 0; overflow: visible;">`);
 
     data.logs.forEach(log => {
       const date = new Date(log.createdAt).toLocaleString('es', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      let levelColor = 'var(--text-dim)';
-      if (log.level === 'WARN') levelColor = 'var(--color-warning)';
-      if (log.level === 'ERROR') levelColor = 'var(--color-danger)';
-      if (log.level === 'INFO') levelColor = 'var(--color-info)';
+      let levelColor = '#aaa';
+      let levelClass = '';
+      if (log.level === 'WARN') { levelColor = '#facc15'; levelClass = 'warn'; }
+      else if (log.level === 'ERROR' || log.level === 'FATAL') { levelColor = '#ef4444'; levelClass = 'error'; }
+      else if (log.level === 'INFO') { levelColor = '#4f8cf7'; levelClass = 'info'; }
 
-      rows.push(`
-          <tr>
-            <td style="color: var(--text-dim); white-space: nowrap;">${date}</td>
-            <td style="color: ${levelColor}; font-weight: bold;">${log.level}</td>
-            <td style="font-family: var(--font-mono); font-size: 0.85rem; color: #bbb;">${escapeHtml(log.message)}</td>
-          </tr>
-      `);
+      rows.push(`<div class="terminal-line ${levelClass}"><span class="log-ts" style="color: #666; margin-right: 8px;">[${date}]</span> <span class="log-level" style="color: ${levelColor}; font-weight: bold;">[${log.level}]</span><span class="log-sep">:</span> <span style="color: #e0e0e0; margin-left: 8px;">${escapeHtml(log.message)}</span></div>`);
     });
 
-    rows.push(`
-        </tbody>
-      </table>
-    `);
+    rows.push(`</div>`);
 
     historyTableWrapper.innerHTML = rows.join('');
     

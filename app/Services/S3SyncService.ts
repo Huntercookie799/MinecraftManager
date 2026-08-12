@@ -1,5 +1,7 @@
 import fs from "node:fs/promises";
+import fsSync from "node:fs";
 import path from "node:path";
+import { pipeline } from "node:stream/promises";
 import AdmZip from "adm-zip";
 import { S3Client, PutObjectCommand, GetObjectCommand, HeadBucketCommand, CreateBucketCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { env } from "../../config/env";
@@ -64,15 +66,15 @@ export class S3SyncService {
       });
 
       const response = await this.client.send(getCommand);
-      const byteArray = await response.Body?.transformToByteArray();
-
-      if (!byteArray) {
+      if (!response.Body) {
         log("[S3SyncService] Received empty body from S3.");
         return;
       }
 
       const tempZipPath = path.join(process.cwd(), "temp_download.zip");
-      await fs.writeFile(tempZipPath, byteArray);
+      // Stream directo a disco: no carga el backup entero en memoria (los backups
+      // de servidores con mundo pueden pesar cientos de MB).
+      await pipeline(response.Body as any, fsSync.createWriteStream(tempZipPath));
 
       log(`[S3SyncService] Unzipping to ${targetDirectory}...`);
       await fs.mkdir(targetDirectory, { recursive: true });
@@ -91,11 +93,9 @@ export class S3SyncService {
             Key: "template.zip"
           });
           const templateResponse = await this.client.send(templateCommand);
-          const templateByteArray = await templateResponse.Body?.transformToByteArray();
-          
-          if (templateByteArray) {
+          if (templateResponse.Body) {
             const tempZipPath = path.join(process.cwd(), "temp_download.zip");
-            await fs.writeFile(tempZipPath, templateByteArray);
+            await pipeline(templateResponse.Body as any, fsSync.createWriteStream(tempZipPath));
             
             log(`[S3SyncService] Unzipping template.zip to ${targetDirectory}...`);
             await fs.mkdir(targetDirectory, { recursive: true });

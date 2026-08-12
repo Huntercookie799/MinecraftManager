@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <script>!function(){var t=localStorage.getItem("mc-theme")||"dark";document.documentElement.dataset.theme=t;document.documentElement.classList.add("no-transition")}();</script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mi Perfil (Cuentas MC) - Minecraft Manager</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/js/components/index.js?v=3"></script>
+  <script type="module" src="/js/components/UISidebar.js?v=3"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://unpkg.com/skinview3d@3.0.0-alpha.1/bundles/skinview3d.bundle.js?v=3"></script>
+  <script>
+    window.addEventListener('load', () => {
+      const loader = document.getElementById('initial-loader');
+      if (loader) {
+        loader.classList.add('fade-out');
+        setTimeout(() => loader.remove(), 300);
+      }
+    });
+  </script>
+  <script type="module" src="/js/components/UIThemeToggle.js?v=3"></script>
+</head>
+<body>
+  <div id="initial-loader" class="initial-loader">
+    <div class="loader-spinner"></div>
+    <div class="text">CARGANDO CUENTAS...</div>
+  </div>
+
+  <!-- Sidebar Component -->
+  <ui-sidebar type="main" active="profile"></ui-sidebar>
+  <ui-sidebar type="profile" active="cuentas" id="profile-sidebar"></ui-sidebar>
+
+  <!-- Content -->
+  <div class="content" id="app-container">
+    
+    <div class="header">
+      <div class="server-title">
+        <h2>Cuentas de Minecraft Vinculadas</h2>
+        <p>Administra tus múltiples perfiles dentro del juego</p>
+      </div>
+      <div class="server-actions">
+        <ui-button variant="success" id="btn-show-add-account" style="width: auto;">Vincular Nueva Cuenta</ui-button>
+      </div>
+    </div>
+
+    <div class="cards-grid" id="accounts-list" style="margin-top: 20px;">
+      <!-- Cuentas generadas por JS -->
+    </div>
+
+  </div>
+
+  <!-- Modal para Nueva Cuenta -->
+  <ui-modal id="add-account-modal" title="Vincular Cuenta de Minecraft" width="400px" style="display: none;">
+    <div style="display: flex; flex-direction: column; gap: 15px; text-align: left;">
+      <div>
+        <label style="display: block; margin-bottom: 5px; font-weight: 500;">Nametag (Nombre de Usuario)</label>
+        <ui-input id="new-account-nametag" placeholder="Ej: Steve"></ui-input>
+      </div>
+      <div class="button-group" style="flex-direction: row; gap: 10px; margin-top: 10px;">
+        <ui-button variant="secondary" id="btn-cancel-add-account">Cancelar</ui-button>
+        <ui-button variant="success" id="btn-confirm-add-account">Añadir Cuenta</ui-button>
+      </div>
+    </div>
+  </ui-modal>
+
+  <script type="module" src="/js/pages/profile-accounts.js?v=3"></script>
+</body>
+</html>

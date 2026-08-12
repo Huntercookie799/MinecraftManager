@@ -28,11 +28,27 @@ export class UISidebar extends HTMLElement {
           <h3>Gestión</h3>
         </div>
         <ul class="nav-secondary">
-          <li class="${active === 'server' ? 'active' : ''}" id="tab-server"><a href="/server.html?id=${serverId}"><i data-lucide="layout-dashboard"></i> <span>Panel de Servidor</span></a></li>
+          <li class="${active === 'server' ? 'active' : ''}" id="tab-server"><a href="/server.html?id=${serverId}"><i data-lucide="layout-dashboard"></i> <span>Panel</span></a></li>
           <li class="${active === 'console' ? 'active' : ''}" id="tab-console"><a href="/server-console.html?id=${serverId}"><i data-lucide="terminal"></i> <span>Consola</span></a></li>
           <li class="${active === 'players' ? 'active' : ''}" id="tab-players"><a href="/server-players.html?id=${serverId}"><i data-lucide="users"></i> <span>Jugadores</span></a></li>
           <li class="${active === 'worlds' ? 'active' : ''}" id="tab-worlds"><a href="/server-worlds.html?id=${serverId}"><i data-lucide="globe"></i> <span>Mundos</span></a></li>
+          <li class="${active === 'mods' ? 'active' : ''}" id="tab-mods"><a href="/server-mods.html?id=${serverId}"><i data-lucide="package"></i> <span>Mods</span></a></li>
+          <li class="${active === 'network' ? 'active' : ''}" id="tab-network"><a href="/server-network.html?id=${serverId}"><i data-lucide="network"></i> <span>Red</span></a></li>
+          <li class="${active === 'customize' ? 'active' : ''}" id="tab-customize"><a href="/server-customize.html?id=${serverId}"><i data-lucide="paintbrush"></i> <span>Personalizar</span></a></li>
           <li class="${active === 'files' ? 'active' : ''}" id="tab-files"><a href="/server-files.html?id=${serverId}"><i data-lucide="folder-open"></i> <span>Archivos</span></a></li>
+          <li class="${active === 'settings' ? 'active' : ''}" id="tab-settings"><a href="/server-settings.html?id=${serverId}"><i data-lucide="settings"></i> <span>Ajustes</span></a></li>
+        </ul>
+      `;
+      this.classList.add('sidebar-secondary');
+    } else if (type === 'profile') {
+      html += `
+        <div class="sidebar-secondary-header">
+          <h3>Ajustes</h3>
+        </div>
+        <ul class="nav-secondary" id="profile-nav">
+          <li class="${active === 'cuenta' ? 'active' : ''}"><a href="/profile.html" class="profile-nav-link"><i data-lucide="user"></i> <span>Cuenta</span></a></li>
+          <li class="${active === 'apariencia' ? 'active' : ''}"><a href="/profile-appearance.html" class="profile-nav-link"><i data-lucide="image"></i> <span>Apariencia</span></a></li>
+          <li class="${active === 'cuentas' ? 'active' : ''}"><a href="/profile-accounts.html" class="profile-nav-link"><i data-lucide="layers"></i> <span>Cuentas MC</span></a></li>
         </ul>
       `;
       this.classList.add('sidebar-secondary');

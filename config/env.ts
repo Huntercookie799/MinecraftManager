@@ -50,6 +50,7 @@ export const env = {
     ...splitArgs(process.env.JAVA_EXTRA_ARGS)
   ],
   logBufferSize: numberFromEnv("LOG_BUFFER_SIZE", 500),
+  proxyPorts: splitArgs(process.env.PROXY_PORTS || "443 80").map(Number).filter((n) => Number.isInteger(n) && n > 0 && n < 65536),
   stopTimeoutMs: numberFromEnv("MINECRAFT_STOP_TIMEOUT_MS", 30_000),
   commandMaxLength: numberFromEnv("MINECRAFT_COMMAND_MAX_LENGTH", 500),
   s3: {
@@ -57,5 +58,7 @@ export const env = {
     bucket: process.env.S3_BUCKET,
     accessKey: process.env.S3_ACCESS_KEY,
     secretKey: process.env.S3_SECRET_KEY,
-  }
+  },
+  curseforgeApiKey: process.env.CURSEFORGE_API_KEY || "",
+  modrinthApiToken: process.env.MODRINTH_API_TOKEN || ""
 };

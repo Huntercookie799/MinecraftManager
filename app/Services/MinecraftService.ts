@@ -9,6 +9,7 @@ import path from "node:path";
 import { env } from "../../config/env";
 import type { Dimension, LogEntry, LogStream, PlayerInfo, ServerState, ServerStatus } from "../Types/server";
 import { RingBuffer } from "../Utils/ringBuffer";
+import { applyServerPort } from "../Utils/serverProperties";
 
 interface PlayerSession {
   join?: Date;
@@ -37,6 +38,9 @@ export interface MinecraftServerConfig {
   version?: string;
   motd?: string;
   mcIcon?: string;
+  softwareType?: string;
+  onlineMode?: boolean;
+  syncWithS3?: boolean;
 }
 
 type ServiceErrorCode =
@@ -122,12 +126,12 @@ export class MinecraftService extends EventEmitter {
     await this.ensureRuntimeIsReady();
 
     // S3: Restaurar desde el backup/template ANTES de fijar server.properties.
-    // El template trae un server.properties con puerto por defecto (25565); si se
-    // restaurara después, pisaría el puerto asignado a este servidor.
-    try {
-      await this.s3Sync.downloadAndUnzip(this.config.directory, this.config.id, (msg) => this.addLog("system", msg));
-    } catch (e: any) {
-      this.addLog("system", `Failed to sync from S3: ${e.message}`);
+    if (this.config.syncWithS3 !== false) {
+      try {
+        await this.s3Sync.downloadAndUnzip(this.config.directory, this.config.id, (msg) => this.addLog("system", msg));
+      } catch (e: any) {
+        this.addLog("system", `Failed to sync from S3: ${e.message}`);
+      }
     }
 
     await this.ensureServerProperties();
@@ -205,10 +209,12 @@ export class MinecraftService extends EventEmitter {
       }
 
       // S3: Crear un backup tras apagarse (esperado o inesperado)
-      try {
-        await this.s3Sync.zipAndUpload(this.config.directory, this.config.id, (msg) => this.addLog("system", msg));
-      } catch (e: any) {
-        this.addLog("system", `Failed to backup to S3: ${e.message}`);
+      if (this.config.syncWithS3 !== false) {
+        try {
+          await this.s3Sync.zipAndUpload(this.config.directory, this.config.id, (msg) => this.addLog("system", msg));
+        } catch (e: any) {
+          this.addLog("system", `Failed to backup to S3: ${e.message}`);
+        }
       }
     });
 
@@ -226,10 +232,12 @@ export class MinecraftService extends EventEmitter {
       this.startedAt = undefined;
       this.state = "OFFLINE";
       await fs.rm(this.pidPath, { force: true }).catch(() => {});
-      try {
-        await this.s3Sync.zipAndUpload(this.config.directory, this.config.id, (msg) => this.addLog("system", msg));
-      } catch (e: any) {
-        this.addLog("system", `Failed to backup to S3: ${e.message}`);
+      if (this.config.syncWithS3 !== false) {
+        try {
+          await this.s3Sync.zipAndUpload(this.config.directory, this.config.id, (msg) => this.addLog("system", msg));
+        } catch (e: any) {
+          this.addLog("system", `Failed to backup to S3: ${e.message}`);
+        }
       }
       return this.getStatus();
     }
@@ -414,11 +422,11 @@ export class MinecraftService extends EventEmitter {
 
   private async ensureServerJar(): Promise<void> {
     try {
-      this.jarPath = await jarManager.resolveJarPath(this.version);
+      this.jarPath = await jarManager.resolveJarPath(this.config.softwareType || "purpur", this.version, this.config.directory);
     } catch (e: any) {
       throw new MinecraftServiceError(
-        `Failed to obtain Purpur jar for version ${this.version}: ${e.message}`,
-        409,
+        `Failed to obtain Server jar for version ${this.version}: ${e.message}`,
+        500,
         "JAR_DOWNLOAD_FAILED"
       );
     }
@@ -440,12 +448,9 @@ export class MinecraftService extends EventEmitter {
 
     const original = content;
 
-    // Puerto asignado al servidor
-    if (content.includes("server-port=")) {
-      content = content.replace(/server-port=\d+/, `server-port=${this.config.port}`);
-    } else {
-      content += `\nserver-port=${this.config.port}\n`;
-    }
+    // Puerto asignado al servidor (ver applyServerPort: la regex está anclada
+    // al inicio de línea para no matchear dentro de management-server-port).
+    content = applyServerPort(content, this.config.port);
 
     // MOTD personalizado (colores § y \n para salto de línea). Los saltos de
     // línea reales se convierten a \n literal para que java.util.Properties los
@@ -457,6 +462,30 @@ export class MinecraftService extends EventEmitter {
       } else {
         content += `\nmotd=${motd}\n`;
       }
+    }
+
+    // online-mode gestionado: se aplica SIEMPRE (después del restore de S3,
+    // que trae el server.properties del backup y pisaría el valor elegido).
+    // true = valida contra Mojang, false = LAN/offline (sin sesión de pago).
+    const onlineMode = this.config.onlineMode ?? true;
+    const omLine = `online-mode=${onlineMode}`;
+    if (/^online-mode=.*$/m.test(content)) {
+      content = content.replace(/^online-mode=.*$/m, () => omLine);
+    } else {
+      content += `\n${omLine}\n`;
+    }
+
+    // connection-throttle=0: obligatorio cuando los jugadores entran por el
+    // MinecraftProxyRouter (80/443). El proxy reenvía TODAS las conexiones desde
+    // 127.0.0.1, y el throttle por defecto (4000ms por IP) considera al proxy como
+    // "un solo jugador": la 2ª conexión en 4s (otro jugador o un retry del cliente)
+    // se mantiene abierta sin respuesta hasta el timeout del cliente. Con 0 queda
+    // desactivado, como recomienda BungeeCord para servidores tras un proxy.
+    const throttleLine = `connection-throttle=0`;
+    if (/^connection-throttle=.*$/m.test(content)) {
+      content = content.replace(/^connection-throttle=.*$/m, () => throttleLine);
+    } else {
+      content += `\n${throttleLine}\n`;
     }
 
     if (content !== original) {
@@ -562,10 +591,13 @@ export class MinecraftService extends EventEmitter {
   }
 
   private parseLineForState(message: string): void {
-    this.updateStateFromLog(message);
-    this.updatePlayersFromLog(message);
-    this.updateWorldTimeFromLog(message);
-    this.updatePlayerDataFromLog(message);
+    // Strip ANSI escape codes before parsing for internal state
+    // so regexes don't break and we don't leak escape chars into commands.
+    const cleanMessage = message.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
+    this.updateStateFromLog(cleanMessage);
+    this.updatePlayersFromLog(cleanMessage);
+    this.updateWorldTimeFromLog(cleanMessage);
+    this.updatePlayerDataFromLog(cleanMessage);
   }
 
   // ─── Private: Orphaned process adoption ────────────────────────────────────
@@ -682,10 +714,12 @@ export class MinecraftService extends EventEmitter {
       this.addLog("system", "El proceso de Minecraft adoptado terminó.");
       await fs.rm(this.pidPath, { force: true }).catch(() => {});
       if (wasAdopted) {
-        try {
-          await this.s3Sync.zipAndUpload(this.config.directory, this.config.id, (msg) => this.addLog("system", msg));
-        } catch (e: any) {
-          this.addLog("system", `Failed to backup to S3: ${e.message}`);
+        if (this.config.syncWithS3 !== false) {
+          try {
+            await this.s3Sync.zipAndUpload(this.config.directory, this.config.id, (msg) => this.addLog("system", msg));
+          } catch (e: any) {
+            this.addLog("system", `Failed to backup to S3: ${e.message}`);
+          }
         }
       }
       return;
@@ -746,8 +780,20 @@ export class MinecraftService extends EventEmitter {
     missing.forEach((name) => this.refreshTried.add(name));
   }
 
+  /** Cache corto de findProcessByPort: evita re-ejecutar netstat/tasklist en cada poll. */
+  private portPidCache = new Map<number, { pid?: number; at: number }>();
+
   /** Encuentra un proceso Java escuchando en el puerto dado (sin pidfile). */
   private async findProcessByPort(port: number): Promise<number | undefined> {
+    const cached = this.portPidCache.get(port);
+    if (cached && Date.now() - cached.at < 5_000) return cached.pid;
+
+    const result = await this.findProcessByPortUncached(port);
+    this.portPidCache.set(port, { pid: result, at: Date.now() });
+    return result;
+  }
+
+  private async findProcessByPortUncached(port: number): Promise<number | undefined> {
     if (process.platform === "win32") {
       try {
         const { stdout } = await execFileAsync("netstat", ["-ano", "-p", "tcp"], { windowsHide: true });
@@ -812,7 +858,8 @@ export class MinecraftService extends EventEmitter {
   private async isJavaProcess(pid: number): Promise<boolean> {
     try {
       if (process.platform === "win32") {
-        const { stdout } = await execFileAsync("wmic", ["process", "where", `ProcessId=${pid}`, "get", "CommandLine"], { windowsHide: true });
+        // tasklist es mucho más rápido que wmic (que en Windows puede tardar 1-2s por llamada)
+        const { stdout } = await execFileAsync("tasklist", ["/fi", `PID eq ${pid}`, "/fo", "csv", "/nh"], { windowsHide: true });
         return /java/i.test(stdout);
       }
       const cmdline = await fs.readFile(`/proc/${pid}/cmdline`, "utf8");
@@ -857,13 +904,11 @@ export class MinecraftService extends EventEmitter {
     if (listMatch?.groups) {
       const names = listMatch.groups.names.split(",").map((name) => name.trim()).filter(Boolean);
       this.players = { count: Number(listMatch.groups.count), max: Number(listMatch.groups.max), names };
-      // The /list response is authoritative: everyone in it IS online right now.
-      // Track a join time so playersInfo marks them online (even if the backend
-      // restarted while they were connected and no "joined the game" line was seen).
       const now = new Date();
       names.forEach((name) => {
         if (!this.playerSessions[name]) {
           this.playerSessions[name] = { join: now, total: 0, dimension: "unknown", x: null, y: null, z: null };
+          this.loadPlayerPlaytime(name);
         }
       });
       return;
@@ -888,6 +933,9 @@ export class MinecraftService extends EventEmitter {
         y: existing?.y ?? null,
         z: existing?.z ?? null
       };
+      if (!existing || existing.total === 0) {
+        this.loadPlayerPlaytime(name);
+      }
       return;
     }
 
@@ -901,9 +949,37 @@ export class MinecraftService extends EventEmitter {
         const diff = (now.getTime() - session.join.getTime()) / 1000;
         session.total += diff;
         delete session.join;
+        this.savePlayerPlaytime(name, Math.floor(session.total));
       }
       const names = this.players.names.filter((n) => n !== name);
       this.players = { ...this.players, count: Math.max(0, names.length), names };
+    }
+  }
+
+  private async loadPlayerPlaytime(name: string) {
+    try {
+      const rows = await prisma.$queryRaw<any[]>`SELECT playtimeSeconds FROM serverplayer WHERE serverId = ${this.config.id} AND name = ${name}`;
+      if (rows && rows.length > 0) {
+        const dbTotal = rows[0].playtimeSeconds;
+        if (this.playerSessions[name]) {
+          this.playerSessions[name].total = dbTotal;
+        }
+      }
+    } catch (e) {
+      console.error("[MinecraftService] Error loading playtime for", name, e);
+    }
+  }
+
+  private async savePlayerPlaytime(name: string, total: number) {
+    try {
+      // Usar $executeRaw para interactuar con la tabla serverplayer sin depender del schema generado
+      await prisma.$executeRaw`
+        INSERT INTO serverplayer (serverId, name, playtimeSeconds, lastSeen, createdAt)
+        VALUES (${this.config.id}, ${name}, ${total}, NOW(), NOW())
+        ON DUPLICATE KEY UPDATE playtimeSeconds = ${total}, lastSeen = NOW()
+      `;
+    } catch (e) {
+      console.error("[MinecraftService] Error saving playtime for", name, e);
     }
   }
 

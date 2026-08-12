@@ -3,6 +3,7 @@ import { env } from "./config/env";
 import { prisma } from "./app/Models/prisma";
 import { serverManager } from "./app/Services/ServerManager";
 import { portForwardService } from "./app/Services/PortForwardService";
+import { minecraftProxyRouter } from "./app/Services/MinecraftProxyRouter";
 
 async function main(): Promise<void> {
   const app = await buildApp();
@@ -40,11 +41,18 @@ async function main(): Promise<void> {
     console.error("[server] No se pudieron adoptar procesos huérfanos:", error);
   }
 
+  // Router por hostname: un solo listener en 80/443 para N servidores
+  // (funciona incluso si el panel corre detrás de un firewall que solo
+  // deja pasar 80/443). Si Apache/WAMP ocupa esos puertos, se loguea y
+  // se continúa con el resto — se puede re-arrancar luego con
+  // minecraftProxyRouter.start([443, 80]).
+  await minecraftProxyRouter.start(env.proxyPorts.length ? env.proxyPorts : [443, 80]);
+
   // Shutdown graceful: detener los servidores gestionados para no dejar JVMs huérfanas
   for (const signal of ["SIGINT", "SIGTERM"] as const) {
     process.on(signal, () => {
       console.log(`[server] ${signal} recibido — deteniendo servidores...`);
-      void Promise.allSettled([serverManager.stopAll(), portForwardService.stopAll()]).finally(() => process.exit(0));
+      void Promise.allSettled([serverManager.stopAll(), portForwardService.stopAll(), minecraftProxyRouter.stop()]).finally(() => process.exit(0));
     });
   }
 

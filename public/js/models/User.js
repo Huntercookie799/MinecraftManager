@@ -34,7 +34,7 @@ export class UserModel {
       if (!response.ok) throw new Error(data.error || 'Upload error');
       return data;
     } catch (err) {
-      alert(err.message);
+      Toast.show(err.message, 'error');
       return null;
     }
   }
@@ -67,7 +67,7 @@ export class UserModel {
       if (!response.ok) throw new Error(data.error || 'Creation error');
       return data;
     } catch (err) {
-      alert(err.message);
+      Toast.show(err.message, 'error');
       return null;
     }
   }
@@ -101,7 +101,7 @@ export class UserModel {
       if (!response.ok) throw new Error(data.error || 'Upload error');
       return data;
     } catch (err) {
-      alert(err.message);
+      Toast.show(err.message, 'error');
       return null;
     }
   }

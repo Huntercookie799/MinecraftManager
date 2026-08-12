@@ -1,3 +1,5 @@
+import './Notifications-v3.js';
+
 export class API {
   static get token() {
     return localStorage.getItem('mm_token');
@@ -29,8 +31,12 @@ export class API {
       };
       
       if (body) {
-        options.headers['Content-Type'] = 'application/json';
-        options.body = JSON.stringify(body);
+        if (body instanceof FormData) {
+          options.body = body;
+        } else {
+          options.headers['Content-Type'] = 'application/json';
+          options.body = JSON.stringify(body);
+        }
       }
       
       const response = await fetch(`${prefix}${endpoint}`, options);
@@ -44,7 +50,7 @@ export class API {
       return data;
     } catch (error) {
       console.error(`Error calling ${endpoint}:`, error);
-      if (!silent) alert(error.message);
+      if (!silent) Toast.show(error.message, 'error');
       return null;
     }
   }

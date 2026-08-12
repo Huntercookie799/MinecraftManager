@@ -17,30 +17,20 @@ export class ServerHeader {
       return;
     }
 
-    // Set initial static info
-    const all = await ServerModel.getAll();
-    if (all) {
-      const server = all.find(s => s.id == serverId);
-      if (server) {
-        const nameEl = DOM.get('current-server-name');
-        const infoEl = DOM.get('current-server-info');
-        if (nameEl) nameEl.textContent = server.name;
-        if (infoEl) infoEl.textContent = `Puerto: ${server.port} | RAM: ${server.memory}`;
-        
-        // Avatar
-        if (server.avatar) {
-          ServerHeader.setAvatar(server.avatar);
-        }
-        
-        // Accent color
-        if (server.accentColor) {
-          ServerHeader.setAccentColor(server.accentColor);
-        }
-      }
-    }
+    // Metadatos rápidos (nombre/avatar/color) en paralelo con el primer status:
+    // ya no bloquea el render esperando el listado de TODOS los servidores.
+    const metaPromise = ServerModel.getMeta(serverId).then((server) => {
+      if (!server) return;
+      const nameEl = DOM.get('current-server-name');
+      const infoEl = DOM.get('current-server-info');
+      if (nameEl) nameEl.textContent = server.name;
+      if (infoEl) infoEl.textContent = `Puerto: ${server.port} | RAM: ${server.memory}`;
+      if (server.avatar) ServerHeader.setAvatar(server.avatar);
+      if (server.accentColor) ServerHeader.setAccentColor(server.accentColor);
+    }).catch(() => {});
 
-    // Start polling
-    await this.checkStatus(serverId);
+    // Primer status inmediato + polling
+    await Promise.all([this.checkStatus(serverId), metaPromise]);
     setInterval(() => this.checkStatus(serverId), 5000);
 
     // Initialize icons

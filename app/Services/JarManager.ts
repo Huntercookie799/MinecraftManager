@@ -44,10 +44,23 @@ export class JarManager {
   }
 
   /**
-   * Devuelve la ruta del jar de Purpur para la versión indicada,
+   * Devuelve la ruta del jar para la versión indicada,
    * descargándolo la primera vez que se pide.
    */
-  async resolveJarPath(version: string): Promise<string> {
+  async resolveJarPath(softwareType: string, version: string, serverDir?: string): Promise<string> {
+    const type = softwareType.toLowerCase();
+    
+    if (type === "fabric") {
+      return this.resolveFabricJar(version);
+    } else if (type === "forge") {
+      return this.resolveForgeJar(version, serverDir);
+    } else {
+      // Default / Purpur
+      return this.resolvePurpurJar(version);
+    }
+  }
+
+  private async resolvePurpurJar(version: string): Promise<string> {
     const jarPath = path.join(env.minecraftDir, `purpur-${version}.jar`);
 
     try {
@@ -66,13 +79,49 @@ export class JarManager {
     }
 
     await fs.mkdir(path.dirname(jarPath), { recursive: true });
-    // Descargar a un archivo temporal y renombrar al terminar para no dejar jars a medias
     const tempPath = `${jarPath}.tmp`;
     await pipeline(response.body, createWriteStream(tempPath));
     await fs.rename(tempPath, jarPath);
 
     console.log(`[JarManager] Purpur ${version} downloaded to ${jarPath}`);
     return jarPath;
+  }
+
+  private async resolveFabricJar(version: string): Promise<string> {
+    const jarPath = path.join(env.minecraftDir, `fabric-${version}.jar`);
+    try {
+      await fs.access(jarPath);
+      return jarPath;
+    } catch {}
+
+    console.log(`[JarManager] Resolving Fabric ${version}...`);
+    const loaderRes = await fetch(`https://meta.fabricmc.net/v2/versions/loader/${version}`);
+    const loaderJson = (await loaderRes.json()) as any[];
+    if (!loaderJson || loaderJson.length === 0) throw new Error(`Fabric no soporta la versión ${version}`);
+    const loaderVersion = loaderJson[0].loader.version;
+
+    const installerRes = await fetch(`https://meta.fabricmc.net/v2/versions/installer`);
+    const installerJson = (await installerRes.json()) as any[];
+    const installerVersion = installerJson[0].version;
+
+    const downloadUrl = `https://meta.fabricmc.net/v2/versions/loader/${version}/${loaderVersion}/${installerVersion}/server/jar`;
+    console.log(`[JarManager] Downloading Fabric server ${version} (loader ${loaderVersion}, installer ${installerVersion})...`);
+
+    const response = await fetch(downloadUrl);
+    if (!response.ok || !response.body) throw new Error(`Fabric download failed: ${response.statusText}`);
+
+    await fs.mkdir(path.dirname(jarPath), { recursive: true });
+    const tempPath = `${jarPath}.tmp`;
+    await pipeline(response.body, createWriteStream(tempPath));
+    await fs.rename(tempPath, jarPath);
+    return jarPath;
+  }
+
+  private async resolveForgeJar(version: string, serverDir?: string): Promise<string> {
+    // Para simplificar esta validación inicial y mantenernos funcionales, lanzaremos error para Forge.
+    // Forge requiere descargar su instalador, extraer librerías, y correr un .bat o .sh
+    // Implementaremos esto si Fabric funciona correctamente.
+    throw new Error("Forge no está completamente soportado en este momento. Usa Fabric o Purpur.");
   }
 
   /** Compara versiones semánticas "x.y[.z]" de mayor a menor. */

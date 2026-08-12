@@ -6,20 +6,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Mundos del Servidor - Minecraft Manager</title>
   <meta name="description" content="Gestiona los mundos de tu servidor de Minecraft.">
-  <link rel="stylesheet" href="/style.css">
-  <script type="module" src="/js/components/index.js"></script>
-  <script type="module" src="/js/components/UISidebar.js"></script>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/js/components/index.js?v=3"></script>
+  <script type="module" src="/js/components/UISidebar.js?v=3"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <script>
     window.addEventListener('load', () => {
       const loader = document.getElementById('initial-loader');
-      if (loader) {
-        loader.classList.add('fade-out');
-        setTimeout(() => loader.remove(), 300);
-      }
+      if (loader) { loader.classList.add('fade-out'); setTimeout(() => loader.remove(), 300); }
+      if (window.lucide) lucide.createIcons();
     });
   </script>
-  <script type="module" src="/js/components/UIThemeToggle.js"></script>
+  <script type="module" src="/js/components/UIThemeToggle.js?v=3"></script>
 </head>
 <body>
   <div id="initial-loader" class="initial-loader">
@@ -27,29 +25,25 @@
     <div class="text">CARGANDO MUNDOS...</div>
   </div>
 
-  <!-- Sidebar Component -->
   <ui-sidebar type="main" active="dashboard"></ui-sidebar>
   <ui-sidebar type="server" active="worlds"></ui-sidebar>
 
-  <!-- Content -->
   <div class="content" id="app-container">
-    
-    <!-- Header General -->
+
+    <!-- Header -->
     <div class="header">
       <div class="server-title">
         <h2 id="current-server-name"><span class="skeleton skeleton-title"></span></h2>
         <p id="current-server-info"><span class="skeleton skeleton-sub"></span></p>
       </div>
-      <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-        <!-- World Exists Indicator -->
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
         <div id="world-exists-badge" class="world-exists-badge" style="display:none;">
-          <span id="world-exists-icon">🌍</span>
+          <span id="world-exists-icon"><i data-lucide="globe" style="width:14px;height:14px;vertical-align:middle;"></i></span>
           <span id="world-exists-label">Mundo generado</span>
         </div>
-        <!-- World Time Indicator -->
-        <div id="world-time-indicator" class="world-time-badge" style="display: none;">
+        <div id="world-time-indicator" class="world-time-badge" style="display:none;">
           <div class="time-icon-wrap" id="time-icon-wrap">
-            <span class="time-icon" id="time-icon">☀️</span>
+            <span class="time-icon" id="time-icon"><i data-lucide="sun" style="width:14px;height:14px;vertical-align:middle;"></i></span>
           </div>
           <div class="time-info">
             <span class="time-label" id="time-label">Día</span>
@@ -58,38 +52,70 @@
         </div>
         <div id="status-badge" class="status-badge offline">
           <div class="dot"></div>
-          <span id="status-text" class="text">OFFLINE</span>
+          <span id="status-text" class="text">Cargando...</span>
         </div>
       </div>
     </div>
 
-    <!-- Vista: Mundos -->
+    <!-- Vista Mundos -->
     <div id="view-worlds" class="tab-content active">
-      <div class="cards-grid">
-        <div class="card" style="grid-column: 1 / -1;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-            <h3 style="margin: 0; padding: 0; border: none;">Gestión de Mundos</h3>
-            <ui-button variant="success" id="btn-show-new-world" style="width: auto;"><i data-lucide="plus"></i> Crear Nuevo Mundo</ui-button>
-          </div>
-          <div id="worlds-list" class="worlds-grid"></div>
+      <div class="card" style="margin-top:0;">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;">
+          <h3 style="margin:0;padding:0;border:none;">
+            <i data-lucide="globe" style="width:18px;height:18px;vertical-align:middle;margin-right:6px;"></i>
+            Gestión de Mundos
+          </h3>
+          <ui-button variant="success" id="btn-show-new-world" style="width:auto;">
+            <i data-lucide="plus" style="width:15px;height:15px;"></i> Nuevo Mundo
+          </ui-button>
         </div>
+
+        <!-- Estado vacío / skeleton -->
+        <div id="worlds-skeleton" style="display:flex;flex-direction:column;gap:12px;">
+          <div class="skeleton" style="height:100px;border-radius:var(--border-radius);"></div>
+          <div class="skeleton" style="height:100px;border-radius:var(--border-radius);"></div>
+        </div>
+
+        <div id="worlds-list" class="worlds-list-table" style="display:none;"></div>
       </div>
     </div>
 
   </div>
 
-  <!-- Modal Nuevo Mundo -->
-  <ui-modal id="new-world-modal" title="Crear Nuevo Mundo" style="display: none;">
-    <div class="command-input" style="flex-direction: column;">
-      <label>Nombre del Mundo:</label>
-      <ui-input variant="command" id="new-world-name" placeholder="Ej. skyblock_world"></ui-input>
-      <div class="button-group" style="flex-direction: row; gap: 10px; margin-top: 15px;">
+  <!-- ── Modal: Crear Nuevo Mundo ── -->
+  <ui-modal id="new-world-modal" title="Crear Nuevo Mundo" style="display:none;">
+    <div style="display:flex;flex-direction:column;gap:16px;">
+      <div>
+        <label style="display:block;margin-bottom:6px;font-size:0.875rem;color:var(--text-main);">Nombre del Mundo:</label>
+        <ui-input variant="command" id="new-world-name" placeholder="Ej. skyblock_world"></ui-input>
+        <p style="font-size:0.75rem;color:var(--text-dim);margin-top:6px;">Solo letras, números y guiones bajos. Sin espacios.</p>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
         <ui-button variant="secondary" id="btn-cancel-new-world">Cancelar</ui-button>
-        <ui-button variant="success" id="btn-create-world">Crear</ui-button>
+        <ui-button variant="success" id="btn-create-world">
+          <i data-lucide="plus" style="width:15px;height:15px;"></i> Crear
+        </ui-button>
       </div>
     </div>
   </ui-modal>
 
-  <script type="module" src="/js/pages/server-worlds.js"></script>
+  <!-- ── Modal: Editar Mundo ── -->
+  <ui-modal id="edit-world-modal" title="Editar Mundo" style="display:none;">
+    <div style="display:flex;flex-direction:column;gap:16px;">
+      <input type="hidden" id="edit-world-id">
+      <div>
+        <label style="display:block;margin-bottom:6px;font-size:0.875rem;color:var(--text-main);">Nuevo nombre:</label>
+        <ui-input id="edit-world-name" placeholder="Ej. mi_mundo_epico"></ui-input>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <ui-button variant="secondary" id="btn-cancel-edit-world">Cancelar</ui-button>
+        <ui-button variant="success" id="btn-save-edit-world">
+          <i data-lucide="save" style="width:15px;height:15px;"></i> Guardar
+        </ui-button>
+      </div>
+    </div>
+  </ui-modal>
+
+  <script type="module" src="/js/pages/server-worlds.js?v=3"></script>
 </body>
 </html>

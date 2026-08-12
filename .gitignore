@@ -65,6 +65,9 @@ minecraft/server/version_history.json
 temp_upload.zip
 temp_download.zip
 
+# ── Scripts locales de la maquina (no se suben) ─────────────
+scripts_personales/
+
 # ── Datos privados de la sesión (Freebuff) ───────────────────
 .freebuff/
 

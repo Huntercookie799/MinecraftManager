@@ -1,18 +1,23 @@
 model Server {
-  id          Int         @id @default(autoincrement())
-  name        String      @unique
-  port        Int         @unique
-  memory      String      @default("2G")
-  version     String      @default("1.21.8")
-  path        String      @unique
-  avatar      String?
-  accentColor String?
-  forwardPort Int?
-  motd        String?
-  mcIcon      String?
-  createdAt   DateTime    @default(now())
-  worlds      World[]
-  logs        ServerLog[]
+  id           Int            @id @default(autoincrement())
+  name         String         @unique
+  port         Int            @unique
+  memory       String         @default("2G")
+  version      String         @default("1.21.8")
+  path         String         @unique
+  avatar       String?
+  accentColor  String?
+  forwardPort  Int?
+  hostname     String?        @unique // ej: "angellap.server01" — usado por MinecraftProxyRouter
+  motd         String?
+  mcIcon       String?
+  softwareType String         @default("purpur")
+  onlineMode   Boolean        @default(true) // online-mode: true valida contra Mojang, false para LAN/offline
+  syncWithS3   Boolean        @default(true) // Si es true, descarga y sube de S3. Si es false, usa los locales
+  createdAt    DateTime       @default(now())
+  worlds       World[]
+  logs         ServerLog[]
+  players      ServerPlayer[]
 }
 
 model ServerLog {
@@ -24,4 +29,16 @@ model ServerLog {
   createdAt DateTime @default(now())
 
   @@index([serverId, createdAt])
+}
+
+model ServerPlayer {
+  id              Int      @id @default(autoincrement())
+  serverId        Int
+  server          Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  name            String
+  playtimeSeconds Int      @default(0)
+  lastSeen        DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  @@unique([serverId, name])
 }

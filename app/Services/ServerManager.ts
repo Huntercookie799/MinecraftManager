@@ -10,6 +10,11 @@ export class ServerManager {
       this.servers.set(config.id, service);
       // Un proceso de Minecraft que sobrevivió a un reinicio del panel se adopta solo.
       void service.tryAdopt();
+    } else if (service.config.port !== config.port || service.config.onlineMode !== config.onlineMode) {
+      // La config cambió en la DB (p.ej. puerto interno reasignado u online-mode).
+      // Sincronizar el servicio en memoria para que ensureServerProperties escriba
+      // el valor correcto (si no, se queda con el valor viejo y el arranque falla).
+      (service as any).config = config;
     }
     return service;
   }

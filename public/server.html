@@ -6,9 +6,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Panel de Servidor - Minecraft Manager</title>
   <meta name="description" content="Gestiona tu servidor de Minecraft: controla el estado, visualiza jugadores en línea, ubicaciones, dimensiones y el ciclo día/noche.">
-  <link rel="stylesheet" href="/style.css">
-  <script type="module" src="/js/components/index.js"></script>
-  <script type="module" src="/js/components/UISidebar.js"></script>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/js/components/index.js?v=3"></script>
+  <script type="module" src="/js/components/UISidebar.js?v=3"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <script>
     window.addEventListener('load', () => {
@@ -17,13 +17,10 @@
         loader.classList.add('fade-out');
         setTimeout(() => loader.remove(), 300);
       }
-      // Inicializar iconos de Lucide si está disponible
-      if (window.lucide) {
-        lucide.createIcons();
-      }
+      if (window.lucide) lucide.createIcons();
     });
   </script>
-  <script type="module" src="/js/components/UIThemeToggle.js"></script>
+  <script type="module" src="/js/components/UIThemeToggle.js?v=3"></script>
 </head>
 <body>
   <div id="initial-loader" class="initial-loader">
@@ -37,7 +34,7 @@
 
   <!-- Content -->
   <div class="content" id="app-container">
-    
+
     <!-- Header General -->
     <div class="header" id="server-header">
       <div style="display: flex; align-items: center; gap: 15px;">
@@ -88,7 +85,7 @@
 
     <!-- Vista: Panel de Servidor -->
     <div id="view-server" class="tab-content active">
-      
+
       <!-- Progress Bar (Visible only when STARTING) -->
       <div id="starting-progress-container" class="starting-progress-container">
         <div class="starting-progress-text">
@@ -97,60 +94,169 @@
         </div>
       </div>
 
-      <div class="cards-grid">
-        <!-- Acciones -->
-        <div class="card">
-          <h3><i data-lucide="zap" style="width:20px;height:20px;vertical-align:middle;"></i> Acciones</h3>
+      <div class="cards-grid" style="grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px;">
+
+        <!-- ── Card 1: Acciones ── -->
+        <div class="card server-card-actions">
+          <h3><i data-lucide="zap" style="width:18px;height:18px;vertical-align:middle;margin-right:6px;"></i>Acciones</h3>
           <div class="button-group">
-            <ui-button variant="success" id="btn-start" disabled><i data-lucide="play" style="width:16px;height:16px;"></i> Iniciar Servidor</ui-button>
+            <ui-button variant="success" id="btn-start" disabled><i data-lucide="play" style="width:16px;height:16px;"></i> Iniciar</ui-button>
             <ui-button variant="warning" id="btn-restart" disabled><i data-lucide="rotate-cw" style="width:16px;height:16px;"></i> Reiniciar</ui-button>
             <ui-button variant="danger" id="btn-stop" disabled><i data-lucide="square" style="width:16px;height:16px;"></i> Detener</ui-button>
           </div>
         </div>
 
-        <!-- Información del servidor -->
+        <!-- ── Card 2: Información ── -->
         <div class="card info-card" id="server-details-card">
-          <h3><i data-lucide="info" style="width:20px;height:20px;vertical-align:middle;"></i> Información</h3>
-          <p><strong><i data-lucide="users" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>Jugadores:</strong> <span id="info-players"><span class="skeleton skeleton-sub" style="width:64px;"></span></span></p>
-          <p><strong><i data-lucide="clock" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>Uptime:</strong> <span id="info-uptime"><span class="skeleton skeleton-sub" style="width:64px;"></span></span></p>
-          <p><strong><i data-lucide="tag" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>Versión:</strong> <span id="info-version"><span class="skeleton skeleton-sub" style="width:110px;"></span></span></p>
-          <p><strong><i data-lucide="wifi" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>Conexión:</strong> <span id="info-ip"><span class="skeleton skeleton-sub" style="width:110px;"></span></span>
-            <button id="btn-copy-ip" class="btn-copy-ip" title="Copiar dirección" style="display:none;"><i data-lucide="copy" style="width:12px;height:12px;"></i> Copiar</button>
-          </p>
-          <div id="restricted-network-badge" class="restricted-network-badge" style="display:none;">✓ Accesible en red restringida (80/443)</div>
-          <p id="srv-hint" class="srv-hint" style="display:none;"></p>
-
-          <hr style="border: none; border-top: 1px solid var(--border-color); margin: 15px 0;">
-          <p><strong><i data-lucide="plug-zap" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>Exponer por 80/443:</strong> <span id="forward-status" class="forward-status">Cargando...</span></p>
-          <div style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px;">
-            <select id="forward-port-select" style="flex: 1; min-width: 130px; background: var(--bg-core); color: var(--text-main); border: 1px solid var(--border-color); border-radius: var(--border-radius); font-family: var(--font-mono); padding: 6px 8px;">
-              <option value="80">Puerto 80</option>
-              <option value="443">Puerto 443 (SSL)</option>
-              <option value="custom">Personalizado...</option>
-            </select>
-            <ui-input type="number" id="forward-port-custom" placeholder="Ej. 8080" style="display:none; width: 110px;"></ui-input>
-            <ui-button variant="success" size="sm" id="btn-forward-start" style="width:auto;"><i data-lucide="plug" style="width:14px;height:14px;"></i> Exponer</ui-button>
-            <ui-button variant="danger" size="sm" id="btn-forward-stop" disabled style="width:auto;"><i data-lucide="unplug" style="width:14px;height:14px;"></i> Detener</ui-button>
+          <h3><i data-lucide="info" style="width:18px;height:18px;vertical-align:middle;margin-right:6px;"></i>Información</h3>
+          <div class="info-rows">
+            <div class="info-row">
+              <span class="info-label"><i data-lucide="users" style="width:14px;height:14px;"></i> Jugadores</span>
+              <span id="info-players"><span class="skeleton skeleton-sub" style="width:64px;"></span></span>
+            </div>
+            <div class="info-row">
+              <span class="info-label"><i data-lucide="clock" style="width:14px;height:14px;"></i> Uptime</span>
+              <span id="info-uptime"><span class="skeleton skeleton-sub" style="width:64px;"></span></span>
+            </div>
+            <div class="info-row">
+              <span class="info-label"><i data-lucide="tag" style="width:14px;height:14px;"></i> Versión</span>
+              <span id="info-version"><span class="skeleton skeleton-sub" style="width:110px;"></span></span>
+            </div>
+            <div class="info-row">
+              <span class="info-label"><i data-lucide="wifi" style="width:14px;height:14px;"></i> Conexión</span>
+              <span id="info-ip"><span class="skeleton skeleton-sub" style="width:110px;"></span></span>
+              <button id="btn-copy-ip" class="btn-copy-ip" title="Copiar dirección" style="display:none;"><i data-lucide="copy" style="width:12px;height:12px;"></i></button>
+            </div>
+            <div class="info-row">
+              <span class="info-label"><i data-lucide="compass" style="width:14px;height:14px;"></i> Mundo</span>
+              <span id="info-world-status"><span class="skeleton skeleton-sub" style="width:80px;"></span></span>
+            </div>
           </div>
-          <p id="forward-url" class="srv-hint" style="display:none;"></p>
-          <p style="color: var(--text-dim); font-family: var(--font-mono); font-size: 0.72rem; margin-top: 8px;">
-            Reenvía el puerto público al servidor interno (<span id="forward-target">--</span>) sin reiniciarlo. Ideal para redes que solo abren 80/443.
-          </p>
+          <div id="restricted-network-badge" class="restricted-network-badge" style="display:none; margin-top:8px;">✓ Accesible en red restringida (80/443)</div>
+          <p id="srv-hint" class="srv-hint" style="display:none; margin-top:6px;"></p>
+        </div>
 
-          <p><strong><i data-lucide="compass" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>Mundo:</strong> <span id="info-world-status"><span class="skeleton skeleton-sub" style="width:80px;"></span></span></p>
-          <hr style="border: none; border-top: 1px solid var(--border-color); margin: 15px 0;">
-          <p><strong><i data-lucide="paintbrush" style="width:16px;height:16px;vertical-align:middle;margin-right:4px;"></i>Personalizar:</strong></p>
-          <p style="display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px;">
-            <ui-button variant="secondary" size="sm" id="btn-edit-server" style="width: auto; display: inline-flex;"><i data-lucide="edit-3" style="width:14px;height:14px;"></i> Editar</ui-button>
-            <ui-button variant="danger" size="sm" id="btn-delete-server" style="width: auto; display: inline-flex;"><i data-lucide="trash-2" style="width:14px;height:14px;"></i> Eliminar</ui-button>
-          </p>
+        <!-- ── Card 3: Mods / Plugins ── -->
+        <div class="card server-quick-card">
+          <div class="quick-card-icon"><i data-lucide="package"></i></div>
+          <div class="quick-card-body">
+            <h3>Mods / Plugins</h3>
+            <p>Instala y gestiona mods desde Modrinth, CurseForge o mediante subida manual.</p>
+          </div>
+          <a id="link-mods" href="#" class="quick-card-link">
+            <i data-lucide="arrow-right" style="width:16px;height:16px;"></i>
+          </a>
+        </div>
+
+        <!-- ── Card 4: Red y Puertos ── -->
+        <div class="card server-quick-card">
+          <div class="quick-card-icon"><i data-lucide="network"></i></div>
+          <div class="quick-card-body">
+            <h3>Red y Puertos</h3>
+            <p>Configura la exposición de puertos y el acceso por hostname compartido.</p>
+          </div>
+          <a id="link-network" href="#" class="quick-card-link">
+            <i data-lucide="arrow-right" style="width:16px;height:16px;"></i>
+          </a>
+        </div>
+
+        <!-- ── Card 5: Personalización ── -->
+        <div class="card server-quick-card">
+          <div class="quick-card-icon"><i data-lucide="paintbrush"></i></div>
+          <div class="quick-card-body">
+            <h3>Personalización</h3>
+            <p>Edita el nombre, avatar, MOTD, skin y color del servidor.</p>
+          </div>
+          <a id="link-customize" href="#" class="quick-card-link">
+            <i data-lucide="arrow-right" style="width:16px;height:16px;"></i>
+          </a>
+        </div>
+
+      </div><!-- /cards-grid -->
+    </div><!-- /view-server -->
+  </div><!-- /content -->
+
+
+  <!-- ═══════════════════════════════════════
+       MODALES
+  ═══════════════════════════════════════ -->
+
+  <!-- Modal de Skin -->
+  <ui-modal id="skin-modal" title="Cambiar Skin" style="display: none;">
+    <div style="background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: var(--border-radius); padding: 12px; margin-bottom: 15px;">
+      <p style="color: var(--text-dim); font-size: 0.9rem; margin-bottom: 8px;">
+        Sube un archivo .png de tu skin. <br/>
+        <span style="color: #ffaa00;">Nota: Asegúrate de tener el plugin <b>SkinRestorer</b> en tu servidor.</span>
+      </p>
+      <ui-button variant="secondary" size="sm" id="btn-install-skinrestorer"><i data-lucide="download"></i> Instalar SkinRestorer Automáticamente</ui-button>
+      <div id="install-sr-status" style="color: var(--text-dim); font-size: 0.85rem; display: none; margin-top: 5px;"></div>
+    </div>
+    <div style="display: flex; flex-direction: column; gap: 15px;">
+      <div>
+        <label style="display: block; margin-bottom: 5px; color: var(--text-main);">Nombre de Jugador:</label>
+        <ui-input id="skin-username" placeholder="Ej: Steve"></ui-input>
+      </div>
+      <div>
+        <label style="display: block; margin-bottom: 5px; color: var(--text-main);">Archivo Skin (.png):</label>
+        <ui-input type="file" id="skin-file" accept=".png"></ui-input>
+      </div>
+      <div id="skin-status" style="color: var(--text-dim); font-size: 0.85rem; display: none;"></div>
+      <div style="display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px;">
+        <ui-button variant="secondary" id="btn-skin-cancel">Cancelar</ui-button>
+        <ui-button variant="success" id="btn-skin-submit"><i data-lucide="upload" style="width:16px;height:16px;"></i> Subir y Aplicar</ui-button>
+      </div>
+    </div>
+  </ui-modal>
+
+  <!-- Modal de Mods / Plugins -->
+  <ui-modal id="addons-modal" title="Gestor de Mods / Plugins" style="display: none;" width="800px">
+    <div style="margin-bottom: 15px;">
+      <p style="color: var(--text-dim); font-size: 0.9rem; margin-bottom: 8px;">
+        Sube archivos .jar para añadir mods o plugins a tu servidor o búscalo directamente en Modrinth/CurseForge.
+      </p>
+
+    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 15px;">
+      <!-- Búsqueda -->
+      <div>
+        <label style="display: block; margin-bottom: 5px; color: var(--text-main); font-size: 0.9rem;">Buscar en Modrinth/CurseForge:</label>
+        <div style="display: flex; gap: 10px; margin-bottom: 5px;">
+          <ui-input id="addon-search" placeholder="Optimizacion, magia..." style="flex: 1;"></ui-input>
+          <ui-button variant="primary" id="btn-addon-search"><i data-lucide="search" style="width:16px;height:16px;"></i> Buscar</ui-button>
+        </div>
+        <div id="addon-search-results" style="display: none; flex-direction: column; gap: 10px; max-height: 250px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: var(--border-radius); padding: 10px; background: var(--bg-core);">
+          <!-- Resultados aquí -->
         </div>
       </div>
 
+      <!-- Subida manual -->
+      <div>
+        <label style="display: block; margin-bottom: 5px; color: var(--text-main); font-size: 0.9rem;">Subida manual (.jar):</label>
+        <div style="display: flex; gap: 10px; margin-bottom: 5px;">
+          <ui-input type="file" id="addon-file" accept=".jar" style="flex: 1;"></ui-input>
+          <ui-button variant="success" id="btn-addon-upload"><i data-lucide="upload" style="width:16px;height:16px;"></i> Subir</ui-button>
+        </div>
+        <div id="addon-status" style="color: var(--text-dim); font-size: 0.85rem; display: none;"></div>
+      </div>
     </div>
-  </div>
 
-  <!-- Modal de Personalizacion -->
+    <div class="table-container" style="max-height: 300px; overflow-y: auto;">
+      <table class="data-table" style="width: 100%;">
+        <thead>
+          <tr>
+            <th>Nombre</th>
+            <th>Tamaño</th>
+            <th>Modificado</th>
+            <th style="width: 80px;">Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="addons-table-body">
+          <tr><td colspan="4" style="text-align: center;">Cargando...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </ui-modal>
+
+  <!-- Modal de Personalización -->
   <ui-modal id="edit-server-modal" title="Personalizar Servidor" style="display: none;">
     <div class="edit-tabs" role="tablist">
       <button type="button" class="edit-tab active" data-edit-tab="general">General</button>
@@ -165,9 +271,15 @@
           <ui-input id="edit-server-name" placeholder="Nombre visible"></ui-input>
 
           <label>Color de acento:</label>
-          <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
             <input type="color" id="edit-server-color" value="#55FF55" style="width: 50px; height: 36px; cursor: pointer;">
             <span id="edit-server-color-hex" style="font-family: var(--font-mono); font-size: 0.85rem; color: var(--text-dim);">#55FF55</span>
+          </div>
+
+          <label>Sincronizar con S3:</label>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <input type="checkbox" id="edit-sync-s3" checked style="transform: scale(1.2);">
+            <span style="color: var(--text-dim); font-size: 0.85rem;">Si se desactiva, los datos del servidor se mantendrán localmente.</span>
           </div>
         </div>
         <div class="edit-col">
@@ -218,6 +330,6 @@
     </div>
   </ui-modal>
 
-  <script type="module" src="/js/pages/server.js"></script>
+  <script type="module" src="/js/pages/server.js?v=3"></script>
 </body>
 </html>

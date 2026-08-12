@@ -7,18 +7,28 @@ export class WorldModel {
   }
 
   static async create(serverId, name) {
-    return await API.call('/', 'POST', { name }, `/api/server/${serverId}/worlds`);
-  }
-
-  static async load(serverId, worldId) {
-    return await API.call(`/${worldId}/load`, 'POST', null, `/api/server/${serverId}/worlds`);
+    const res = await API.call('/', 'POST', { name }, `/api/server/${serverId}/worlds`);
+    if (!res?.error) window.Toast?.show(`Mundo "${name}" creado exitosamente`, 'success');
+    else window.Toast?.show(res.error, 'error');
+    return res;
   }
 
   static async delete(serverId, worldId) {
-    return await API.call(`/${worldId}`, 'DELETE', null, `/api/server/${serverId}/worlds`);
+    const res = await API.call(`/${worldId}`, 'DELETE', null, `/api/server/${serverId}/worlds`);
+    if (!res?.error) window.Toast?.show('Mundo eliminado', 'success');
+    else window.Toast?.show(res.error, 'error');
+    return res;
   }
 
   static async update(serverId, worldId, name) {
     return await API.call(`/${worldId}`, 'PUT', { name }, `/api/server/${serverId}/worlds`);
+  }
+
+  /**
+   * Inicia descarga del mundo como archivo .zip
+   * El caller se encarga del fetch directo para manejar el Blob
+   */
+  static getDownloadUrl(serverId, worldName) {
+    return `/api/server/${serverId}/worlds/${encodeURIComponent(worldName)}/download`;
   }
 }

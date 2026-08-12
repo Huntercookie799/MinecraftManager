@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <script>!function(){var t=localStorage.getItem("mc-theme")||"dark";document.documentElement.dataset.theme=t;document.documentElement.classList.add("no-transition")}();</script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mi Perfil (Apariencia) - Minecraft Manager</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/js/components/index.js?v=3"></script>
+  <script type="module" src="/js/components/UISidebar.js?v=3"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://unpkg.com/skinview3d@3.0.0-alpha.1/bundles/skinview3d.bundle.js?v=3"></script>
+  <script>
+    window.addEventListener('load', () => {
+      const loader = document.getElementById('initial-loader');
+      if (loader) {
+        loader.classList.add('fade-out');
+        setTimeout(() => loader.remove(), 300);
+      }
+    });
+  </script>
+  <script type="module" src="/js/components/UIThemeToggle.js?v=3"></script>
+</head>
+<body>
+  <div id="initial-loader" class="initial-loader">
+    <div class="loader-spinner"></div>
+    <div class="text">CARGANDO APARIENCIA...</div>
+  </div>
+
+  <!-- Sidebar Component -->
+  <ui-sidebar type="main" active="profile"></ui-sidebar>
+  <ui-sidebar type="profile" active="apariencia" id="profile-sidebar"></ui-sidebar>
+
+  <!-- Content -->
+  <div class="content" id="app-container">
+    <div class="header" style="margin-bottom: 30px;">
+      <div class="server-title">
+        <h2>Mi Perfil</h2>
+        <p>Configura tu cuenta y apariencia</p>
+      </div>
+    </div>
+
+    <div class="cards-grid">
+      
+      <!-- Foto de Perfil -->
+      <div class="card">
+        <h3><i data-lucide="image"></i> Foto de Perfil</h3>
+        
+        <div style="display: flex; gap: 20px; align-items: center; margin-top: 20px;">
+          <img id="avatar-preview" src="/default-avatar.png" alt="Avatar" style="width: 100px; height: 100px; border-radius: 8px; object-fit: cover; border: 1px solid var(--border-color); image-rendering: pixelated; flex-shrink: 0;">
+          <div style="flex: 1; min-width: 0;">
+            <p style="color: var(--text-dim); font-size: 0.9rem; margin-bottom: 12px; line-height: 1.5;">Esta imagen te representará dentro del panel web. Recomendamos usar un archivo cuadrado PNG o JPG.</p>
+            <ui-input type="file" id="upload-avatar" accept="image/*" hidden></ui-input>
+            <ui-button variant="secondary" id="btn-upload-avatar" onclick="document.getElementById('upload-avatar').click()" style="width: 100%;">Elegir Imagen...</ui-button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Skin de Minecraft -->
+      <div class="card">
+        <h3><i data-lucide="user"></i> Skin de Minecraft</h3>
+        
+        <div style="margin-top: 20px;">
+          <p style="color: var(--text-dim); font-size: 0.9rem; margin-bottom: 12px; line-height: 1.5;">Sube tu archivo de skin <code>.png</code> para que podamos generar tu previsualización en 3D.</p>
+          <ui-input type="file" id="upload-skin" accept=".png" hidden></ui-input>
+          <ui-button variant="secondary" onclick="document.getElementById('upload-skin').click()" style="width: 100%;">Elegir Skin...</ui-button>
+          
+          <div style="margin-top: 25px; text-align: center;">
+            <div id="skin-viewer" class="skin-viewer-box" style="width: 100%; max-width: 250px; height: 350px; margin: 0 auto; background: rgba(15,23,42,0.4); border-radius: var(--border-radius); border: 1px solid var(--border-color);">
+              <!-- Skin view canvas -->
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Botón de guardar global -->
+    <div style="margin-top: 25px;">
+      <div id="profile-msg" style="color: var(--color-success); font-weight: bold; display: none; margin-bottom: 15px;"></div>
+      <ui-button variant="blue" type="button" id="btn-save-appearance">Guardar Cambios</ui-button>
+    </div>
+
+  </div>
+
+  <script type="module" src="/js/pages/profile-appearance.js?v=3"></script>
+</body>
+</html>

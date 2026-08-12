@@ -1,5 +1,6 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import path from "node:path";
+import os from "node:os";
 import { createWriteStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
 import { serverManager } from "../../Services/ServerManager";
@@ -10,7 +11,10 @@ import fs from "node:fs/promises";
 import { S3SyncService } from "../../Services/S3SyncService";
 import { jarManager } from "../../Services/JarManager";
 import { Jimp } from "jimp";
+import { addonSearchService } from "../../Services/AddonSearchService";
 import { portForwardService } from "../../Services/PortForwardService";
+import { minecraftProxyRouter } from "../../Services/MinecraftProxyRouter";
+import { getLanIp } from "../../Utils/network";
 
 interface LogsQuery {
   sinceId?: string;
@@ -25,6 +29,8 @@ interface CreateServerBody {
   memory?: string;
   port?: number;
   version?: string;
+  hostname?: string;
+  softwareType?: string;
 }
 
 const DEFAULT_MC_VERSION = "1.21.8";
@@ -52,6 +58,22 @@ async function checkWorldExists(serverPath: string, worldName = "world"): Promis
   } catch {
     return false;
   }
+}
+
+/** Endpoint PÚBLICO (sin auth): IP LAN + hostnames configurados. Lo usa el
+ *  script de sincronización que se descarga para las PCs de los jugadores
+ *  (no expone credenciales ni datos sensibles: solo IP y nombres de host). */
+export async function registerPublicServerRoutes(app: FastifyInstance): Promise<void> {
+  app.get("/hostnames/public", async () => {
+    const servers = await prisma.server.findMany({
+      where: { hostname: { not: null } },
+      select: { hostname: true }
+    });
+    return {
+      lanIp: getLanIp(),
+      hostnames: servers.map(s => s.hostname).filter((h): h is string => !!h)
+    };
+  });
 }
 
 export async function registerServerRoutes(app: FastifyInstance): Promise<void> {
@@ -87,11 +109,165 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
       return reply.code(500).send({ error: e.message });
     }
   });
+
+  app.get<{ Params: { id: string } }>("/:id/players", async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const server = await prisma.server.findUnique({ where: { id } });
+    if (!server) return reply.code(404).send({ error: "Servidor no encontrado" });
+
+    try {
+      const players = await prisma.$queryRaw<any[]>`
+        SELECT name, playtimeSeconds, lastSeen, createdAt
+        FROM serverplayer
+        WHERE serverId = ${id}
+        ORDER BY playtimeSeconds DESC
+      `;
+      return { success: true, players };
+    } catch (e) {
+      console.error("Error fetching historical players", e);
+      return reply.code(500).send({ error: "Error al obtener jugadores" });
+    }
+  });
+
+  // POST /:id/skins
+  app.post<{ Params: { id: string } }>("/:id/skins", async (request, reply) => {
+    try {
+      const serverId = parseInt(request.params.id, 10);
+      const svc = serverManager.getServiceById(serverId);
+      if (!svc || svc.getStatus().status !== "ONLINE") {
+        return reply.code(400).send({ error: "El servidor no está ejecutándose o no se encontró." });
+      }
+
+      const data = await request.file();
+      if (!data) {
+        return reply.code(400).send({ error: "No se subió ningún archivo" });
+      }
+
+      const username = (data.fields.username as any)?.value as string;
+      if (!username) {
+        return reply.code(400).send({ error: "El username es obligatorio" });
+      }
+
+      const fileBuffer = await data.toBuffer();
+
+      const formData = new FormData();
+      formData.append("file", new Blob([new Uint8Array(fileBuffer)], { type: data.mimetype }), data.filename);
+      formData.append("visibility", "1"); // 1 = private
+
+      const response = await fetch("https://api.mineskin.org/generate/upload", {
+        method: "POST",
+        body: formData,
+        headers: {
+          "User-Agent": "MinecraftManager/1.0"
+        }
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Error en MineSkin API: ${response.status} ${errorText}`);
+      }
+
+      const json = await response.json();
+      const { value, signature } = (json as any).data.texture;
+
+      // Inyectar comando de SkinRestorer
+      svc.sendCommand(`skin custom ${username} ${value} ${signature}`);
+
+      return { success: true, message: `Skin aplicada exitosamente a ${username}.` };
+    } catch (e: any) {
+      console.error("[ServerController] Error subiendo skin:", e);
+      return reply.code(500).send({ error: e.message });
+    }
+  });
+
+  // POST /:id/install-skinrestorer
+  app.post<{ Params: { id: string } }>("/:id/install-skinrestorer", async (request, reply) => {
+    try {
+      const serverId = parseInt(request.params.id, 10);
+      const server = await prisma.server.findUnique({ where: { id: serverId } });
+      if (!server) return reply.code(404).send({ error: "Server no encontrado" });
+
+      const pluginsDir = path.join(server.path, "plugins");
+      await fs.mkdir(pluginsDir, { recursive: true });
+      const destFile = path.join(pluginsDir, "SkinRestorer.jar");
+
+      // Buscar la última versión en GitHub
+      const res = await fetch("https://api.github.com/repos/SkinRestorer/SkinRestorer/releases/latest", {
+        headers: { "User-Agent": "MinecraftManager/1.0" }
+      });
+      if (!res.ok) throw new Error("No se pudo contactar con GitHub API");
+      const json = await res.json();
+      const asset = (json as any).assets?.find((a: any) => a.name.endsWith(".jar"));
+      if (!asset) throw new Error("No se encontró el archivo .jar en GitHub");
+
+      // Descargar el archivo
+      const downloadRes = await fetch(asset.browser_download_url);
+      if (!downloadRes.ok) throw new Error(`Fallo al descargar: ${downloadRes.statusText}`);
+      
+      const buffer = await downloadRes.arrayBuffer();
+      await fs.writeFile(destFile, Buffer.from(buffer));
+
+      return { success: true, message: "SkinRestorer instalado correctamente en la carpeta plugins." };
+    } catch (e: any) {
+      console.error("[ServerController] Error instalando SkinRestorer:", e);
+      return reply.code(500).send({ error: e.message });
+    }
+  });
+
+
+
   // List all servers
   // List available Minecraft versions (Purpur)
   app.get("/versions", async () => {
     const versions = await jarManager.listVersions();
     return { versions };
+  });
+
+  // Estado del router por hostname (puertos 80/443)
+  app.get("/router/status", async () => {
+    return { listeners: minecraftProxyRouter.getStatus() };
+  });
+
+  // Lista de hostnames configurados + IP LAN + estado del router
+  app.get("/hostnames", async () => {
+    const servers = await prisma.server.findMany({
+      where: { hostname: { not: null } },
+      select: { id: true, name: true, hostname: true, port: true, version: true, path: true, memory: true, motd: true, mcIcon: true, onlineMode: true, softwareType: true, syncWithS3: true }
+    });
+
+    const items = await Promise.all(servers.map(async (s) => {
+      const service = serverManager.getService({
+        id: s.id,
+        name: s.name,
+        directory: s.path,
+        port: s.port,
+        memory: s.memory,
+        version: s.version ?? undefined,
+        motd: s.motd ?? undefined,
+        mcIcon: s.mcIcon ?? undefined,
+        softwareType: s.softwareType,
+        onlineMode: s.onlineMode ?? true,
+        syncWithS3: s.syncWithS3 ?? true
+      });
+      await service.tryAdopt();
+      const status = service.getStatus();
+      return {
+        id: s.id,
+        name: s.name,
+        hostname: s.hostname,
+        port: s.port,
+        version: s.version,
+        status: status.status,
+        players: status.players,
+        maxPlayers: status.maxPlayers
+      };
+    }));
+
+    return {
+      lanIp: getLanIp(),
+      listeners: minecraftProxyRouter.getStatus(),
+      hostnames: items
+    };
   });
 
   app.get("/", async () => {
@@ -105,7 +281,9 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
         memory: s.memory,
         version: s.version ?? undefined,
         motd: s.motd ?? undefined,
-        mcIcon: s.mcIcon ?? undefined
+        mcIcon: s.mcIcon ?? undefined,
+        softwareType: s.softwareType,
+        onlineMode: s.onlineMode ?? true
       });
       await service.tryAdopt();
       const worldExists = await checkWorldExists(s.path);
@@ -145,14 +323,38 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
           port: assignedPort,
           memory: memory || "2G",
           version: mcVersion,
-          path: serverPath
+          path: serverPath,
+          hostname: request.body.hostname?.trim() ? request.body.hostname.trim().toLowerCase() : null,
+          softwareType: request.body.softwareType || "purpur",
         }
       });
+      await minecraftProxyRouter.reloadRoutes();
       return { success: true, server };
     } catch (e: any) {
       if (e.code === 'P2002') return reply.code(400).send({ error: "Name or port already exists" });
       throw e;
     }
+  });
+
+  // Metadatos rápidos de un servidor (sin adopción ni escaneo de disco) —
+  // para que el panel pinte nombre/avatar al instante sin esperar el listado completo.
+  app.get<{ Params: { id: string } }>("/:id/meta", async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const server = await prisma.server.findUnique({ where: { id } });
+    if (!server) return reply.code(404).send({ error: "Server not found" });
+    return {
+      id: server.id,
+      name: server.name,
+      port: server.port,
+      memory: server.memory,
+      version: server.version,
+      avatar: server.avatar,
+      accentColor: server.accentColor,
+      hostname: server.hostname,
+      forwardPort: server.forwardPort,
+      motd: server.motd,
+      mcIcon: server.mcIcon
+    };
   });
 
   // Update server settings (name, avatar, accent color, MOTD, server icon)
@@ -215,12 +417,14 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
       }
     }
 
-    // Accept JSON body for name / accentColor / motd update
+    // Accept JSON body for name / accentColor / motd / onlineMode update
     if (contentType.includes("application/json")) {
       const body = request.body as any || {};
       if (body.name && body.name !== server.name) updateData.name = body.name;
       if (body.accentColor) updateData.accentColor = body.accentColor;
       if (body.motd !== undefined) updateData.motd = String(body.motd);
+      if (typeof body.onlineMode === "boolean") updateData.onlineMode = body.onlineMode;
+      if (typeof body.syncWithS3 === "boolean") updateData.syncWithS3 = body.syncWithS3;
     }
 
     // ── Validaciones ──────────────────────────────────────────────────────
@@ -260,6 +464,7 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
     serverManager.removeService(id);
     await prisma.server.delete({ where: { id } });
     await fs.rm(server.path, { recursive: true, force: true }).catch(() => {});
+    await minecraftProxyRouter.reloadRoutes();
     
     return { success: true };
   });
@@ -316,6 +521,130 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
     return { success: true };
   });
 
+  // ── Hostname Routing (varios servidores detrás del mismo 80/443) ─────────
+  app.get<{ Params: { id: string } }>("/:id/hostname", async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const server = await prisma.server.findUnique({ where: { id } });
+    if (!server) return reply.code(404).send({ error: "Server not found" });
+    return {
+      hostname: server.hostname,
+      listeners: minecraftProxyRouter.getStatus()
+    };
+  });
+
+  app.put<{ Params: { id: string }, Body: { hostname?: string } }>("/:id/hostname", async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const server = await prisma.server.findUnique({ where: { id } });
+    if (!server) return reply.code(404).send({ error: "Server not found" });
+
+    const raw = (request.body?.hostname ?? "").trim().toLowerCase();
+    if (raw === "") {
+      await prisma.server.update({ where: { id }, data: { hostname: null } });
+      await minecraftProxyRouter.reloadRoutes();
+      return { success: true, hostname: null };
+    }
+
+    if (!/^[a-z0-9][a-z0-9.-]{0,253}$/.test(raw)) {
+      return reply.code(400).send({ error: "Hostname inválido. Ej: angellap.server01 (letras, números, puntos y guiones)" });
+    }
+    if (raw.includes("..")) {
+      return reply.code(400).send({ error: "Hostname inválido: no puede tener puntos consecutivos" });
+    }
+
+    const existing = await prisma.server.findUnique({ where: { hostname: raw } });
+    if (existing && existing.id !== id) {
+      return reply.code(409).send({ error: `El hostname "${raw}" ya está asignado al servidor ${existing.name}` });
+    }
+
+    await prisma.server.update({ where: { id }, data: { hostname: raw } });
+    await minecraftProxyRouter.reloadRoutes();
+    return { success: true, hostname: raw };
+  });
+
+  app.delete<{ Params: { id: string } }>("/:id/hostname", async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const server = await prisma.server.findUnique({ where: { id } });
+    if (!server) return reply.code(404).send({ error: "Server not found" });
+    await prisma.server.update({ where: { id }, data: { hostname: null } });
+    await minecraftProxyRouter.reloadRoutes();
+    return { success: true, hostname: null };
+  });
+
+  // ── Server Properties ──────────────────────────────────────────────────────
+  app.get<{ Params: { id: string } }>("/:id/properties", async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const server = await prisma.server.findUnique({ where: { id } });
+    if (!server) return reply.code(404).send({ error: "Server not found" });
+
+    const propsPath = path.join(server.path, "server.properties");
+    try {
+      const data = await fs.readFile(propsPath, "utf-8");
+      const props: Record<string, string> = {};
+      data.split("\n").forEach((line) => {
+        line = line.trim();
+        if (!line || line.startsWith("#")) return;
+        const idx = line.indexOf("=");
+        if (idx > -1) {
+          props[line.slice(0, idx).trim()] = line.slice(idx + 1).trim();
+        }
+      });
+      return { properties: props };
+    } catch (e: any) {
+      if (e.code === "ENOENT") {
+        return { properties: {} };
+      }
+      return reply.code(500).send({ error: e.message });
+    }
+  });
+
+  app.put<{ Params: { id: string }, Body: { properties: Record<string, string> } }>("/:id/properties", async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const server = await prisma.server.findUnique({ where: { id } });
+    if (!server) return reply.code(404).send({ error: "Server not found" });
+
+    const propsPath = path.join(server.path, "server.properties");
+    const updates = request.body?.properties || {};
+
+    let lines: string[] = [];
+    try {
+      const data = await fs.readFile(propsPath, "utf-8");
+      lines = data.split("\n");
+    } catch (e: any) {
+      if (e.code !== "ENOENT") {
+        return reply.code(500).send({ error: e.message });
+      }
+    }
+
+    const propsSet = new Set(Object.keys(updates));
+    const newLines: string[] = [];
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed && !trimmed.startsWith("#")) {
+        const idx = trimmed.indexOf("=");
+        if (idx > -1) {
+          const key = trimmed.slice(0, idx).trim();
+          if (propsSet.has(key)) {
+            newLines.push(`${key}=${updates[key]}`);
+            propsSet.delete(key);
+            continue;
+          }
+        }
+      }
+      newLines.push(line);
+    }
+
+    // append remaining
+    for (const key of propsSet) {
+      newLines.push(`${key}=${updates[key]}`);
+    }
+
+    await fs.mkdir(server.path, { recursive: true });
+    await fs.writeFile(propsPath, newLines.join("\n"));
+
+    return { success: true };
+  });
+
   // Middleware to get server config
   async function withService(idStr: string, reply: FastifyReply, action: (service: any) => Promise<any>) {
     const id = parseInt(idStr, 10);
@@ -330,7 +659,9 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
       memory: server.memory,
       version: server.version,
       motd: server.motd ?? undefined,
-      mcIcon: server.mcIcon ?? undefined
+      mcIcon: server.mcIcon ?? undefined,
+      softwareType: server.softwareType,
+      onlineMode: server.onlineMode ?? true
     });
     await service.tryAdopt();
     
@@ -357,7 +688,9 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
       memory: server.memory,
       version: server.version,
       motd: server.motd ?? undefined,
-      mcIcon: server.mcIcon ?? undefined
+      mcIcon: server.mcIcon ?? undefined,
+      softwareType: server.softwareType,
+      onlineMode: server.onlineMode ?? true
     });
     await service.tryAdopt();
 
@@ -386,7 +719,7 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
     });
   });
 
-  app.get<{ Params: { id: string }, Querystring: { page?: string, limit?: string } }>("/:id/logs/history", async (request, reply) => {
+  app.get<{ Params: { id: string }, Querystring: { page?: string, limit?: string, search?: string | string[] } }>("/:id/logs/history", async (request, reply) => {
     const id = parseInt(request.params.id, 10);
     const server = await prisma.server.findUnique({ where: { id } });
     if (!server) return reply.code(404).send({ error: "Server not found" });
@@ -395,14 +728,22 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
     const limit = Math.max(1, Math.min(500, parseInt(request.query.limit || "100", 10)));
     const skip = (page - 1) * limit;
 
+    const whereClause: any = { serverId: id };
+    if (request.query.search) {
+      const searches = Array.isArray(request.query.search) ? request.query.search : [request.query.search];
+      if (searches.length > 0) {
+        whereClause.AND = searches.map(s => ({ message: { contains: s } }));
+      }
+    }
+
     const [logs, total] = await Promise.all([
       prisma.serverLog.findMany({
-        where: { serverId: id },
+        where: whereClause,
         orderBy: { createdAt: "desc" },
         skip,
         take: limit
       }),
-      prisma.serverLog.count({ where: { serverId: id } })
+      prisma.serverLog.count({ where: whereClause })
     ]);
 
     return { logs, page, limit, total, totalPages: Math.ceil(total / limit) };
@@ -414,6 +755,133 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
       return reply.code(400).send({ error: "COMMAND_REJECTED", message: "String command required" });
     }
     return withService(request.params.id, reply, async (service) => service.sendCommand(command));
+  });
+
+  // ── Addons (Mods / Plugins) ────────────────────────────────────────────────────────
+  app.get<{ Params: { id: string } }>("/:id/addons", async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const server = await prisma.server.findUnique({ where: { id } });
+    if (!server) return reply.code(404).send({ error: "Server not found" });
+
+    const isMod = server.softwareType === "fabric" || server.softwareType === "forge";
+    const folderName = isMod ? "mods" : "plugins";
+    const folderPath = path.join(server.path, folderName);
+
+    try {
+      await fs.mkdir(folderPath, { recursive: true });
+      const entries = await fs.readdir(folderPath, { withFileTypes: true });
+      const items = await Promise.all(
+        entries.filter(e => e.isFile() && e.name.endsWith(".jar")).map(async (entry) => {
+          const fullPath = path.join(folderPath, entry.name);
+          const stat = await fs.stat(fullPath);
+          return {
+            name: entry.name,
+            size: formatBytes(stat.size),
+            modified: stat.mtime.toISOString()
+          };
+        })
+      );
+      return { folder: folderName, items };
+    } catch (e: any) {
+      return { folder: folderName, items: [] };
+    }
+  });
+
+  app.post<{ Params: { id: string } }>("/:id/addons", async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const server = await prisma.server.findUnique({ where: { id } });
+    if (!server) return reply.code(404).send({ error: "Server not found" });
+
+    const isMod = server.softwareType === "fabric" || server.softwareType === "forge";
+    const folderName = isMod ? "mods" : "plugins";
+    const folderPath = path.join(server.path, folderName);
+    await fs.mkdir(folderPath, { recursive: true });
+
+    const data = await request.file();
+    if (!data) return reply.code(400).send({ error: "No file uploaded" });
+
+    if (!data.filename.endsWith(".jar")) {
+      return reply.code(400).send({ error: "Only .jar files are allowed" });
+    }
+
+    const destFile = path.join(folderPath, data.filename);
+    const writeStream = createWriteStream(destFile);
+    await pipeline(data.file, writeStream);
+
+    return { success: true, message: "Addon subido correctamente" };
+  });
+
+  app.delete<{ Params: { id: string, filename: string } }>("/:id/addons/:filename", async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const filename = request.params.filename;
+    const server = await prisma.server.findUnique({ where: { id } });
+    if (!server) return reply.code(404).send({ error: "Server not found" });
+
+    const isMod = server.softwareType === "fabric" || server.softwareType === "forge";
+    const folderName = isMod ? "mods" : "plugins";
+    const filePath = path.join(server.path, folderName, filename);
+
+    if (filePath.includes("..") || !filePath.startsWith(path.resolve(server.path, folderName))) {
+       return reply.code(403).send({ error: "Access denied" });
+    }
+
+    try {
+      await fs.unlink(filePath);
+      return { success: true };
+    } catch (e) {
+      return reply.code(500).send({ error: "Failed to delete file" });
+    }
+  });
+
+  // ── Addons Search ────────────────────────────────────────────────────────
+  app.get<{ Params: { id: string }, Querystring: { q: string, version?: string, loader?: string, limit?: string } }>("/:id/addons/search", async (request, reply) => {
+    const { q, version, loader, limit } = request.query;
+    if (!q) return reply.code(400).send({ error: "Falta el término de búsqueda 'q'" });
+    const limitNum = limit ? parseInt(limit, 10) : 20;
+    
+    try {
+      const results = await addonSearchService.search(q, version, loader, limitNum);
+      return { success: true, items: results };
+    } catch (e: any) {
+      return reply.code(500).send({ error: e.message });
+    }
+  });
+
+  app.post<{ Params: { id: string }, Body: { source: "modrinth" | "curseforge", projectId: string } }>("/:id/addons/install", async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const server = await prisma.server.findUnique({ where: { id } });
+    if (!server) return reply.code(404).send({ error: "Server not found" });
+
+    const { source, projectId } = request.body;
+    if (!source || !projectId) return reply.code(400).send({ error: "Falta source o projectId" });
+
+    let loader = server.softwareType;
+    let searchLoader = loader;
+    if (loader === "purpur") searchLoader = "paper"; // Equivalencia
+
+    try {
+      const versions = await addonSearchService.getVersions(source, projectId, server.version, searchLoader);
+      if (!versions || versions.length === 0) {
+        return reply.code(404).send({ error: "No hay versiones compatibles para la versión de este servidor." });
+      }
+
+      const bestVersion = versions[0];
+      const folderName = (loader === "fabric" || loader === "forge") ? "mods" : "plugins";
+      const destFolder = path.join(server.path, folderName);
+      await fs.mkdir(destFolder, { recursive: true });
+      
+      const destPath = path.join(destFolder, bestVersion.filename);
+      
+      const downloadRes = await fetch(bestVersion.downloadUrl);
+      if (!downloadRes.ok) throw new Error("Fallo al descargar de la fuente externa");
+      
+      const arrayBuffer = await downloadRes.arrayBuffer();
+      await fs.writeFile(destPath, Buffer.from(arrayBuffer));
+
+      return { success: true, message: `Instalado ${bestVersion.filename}` };
+    } catch (e: any) {
+      return reply.code(500).send({ error: e.message });
+    }
   });
 
   // ── File Browser ──────────────────────────────────────────────────────────

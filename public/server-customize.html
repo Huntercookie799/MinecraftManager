@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <script>!function(){var t=localStorage.getItem("mc-theme")||"dark";document.documentElement.dataset.theme=t;document.documentElement.classList.add("no-transition")}();</script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Personalización - Minecraft Manager</title>
+  <meta name="description" content="Personaliza el nombre, avatar, MOTD e icono de tu servidor de Minecraft.">
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/js/components/index.js?v=3"></script>
+  <script type="module" src="/js/components/UISidebar.js?v=3"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script>
+    window.addEventListener('load', () => {
+      const loader = document.getElementById('initial-loader');
+      if (loader) { loader.classList.add('fade-out'); setTimeout(() => loader.remove(), 300); }
+      if (window.lucide) lucide.createIcons();
+    });
+  </script>
+  <script type="module" src="/js/components/UIThemeToggle.js?v=3"></script>
+</head>
+<body>
+  <div id="initial-loader" class="initial-loader">
+    <div class="loader-spinner"></div>
+    <div class="text">CARGANDO PERSONALIZACIÓN...</div>
+  </div>
+
+  <ui-sidebar type="main" active="dashboard"></ui-sidebar>
+  <ui-sidebar type="server" active="customize"></ui-sidebar>
+
+  <div class="content" id="app-container">
+    <div class="header">
+      <div class="server-title">
+        <h2 id="current-server-name"><span class="skeleton skeleton-title"></span></h2>
+        <p id="current-server-info"><span class="skeleton skeleton-sub"></span></p>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <div id="status-badge" class="status-badge offline">
+          <div class="dot"></div>
+          <span id="status-text" class="text">Cargando...</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="cards-grid" style="grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 20px; margin-top: 20px;">
+
+      <!-- Card: General -->
+      <div class="card">
+        <h3><i data-lucide="sliders" style="width:18px;height:18px;vertical-align:middle;margin-right:6px;"></i>General</h3>
+        <div class="setting-group" style="margin-bottom:16px;">
+          <label>Nombre del Servidor</label>
+          <p class="desc" style="color:var(--text-dim);font-size:0.8rem;margin-bottom:6px;">Nombre visible en el panel de administración.</p>
+          <ui-input id="edit-server-name" placeholder="Nombre visible"></ui-input>
+        </div>
+
+        <div class="setting-group" style="margin-bottom:16px;">
+          <label>Color de Acento</label>
+          <p class="desc" style="color:var(--text-dim);font-size:0.8rem;margin-bottom:6px;">Color destacado para la tarjeta del servidor.</p>
+          <div style="display:flex;align-items:center;gap:10px;">
+            <input type="color" id="edit-server-color" value="#55FF55" style="width:50px;height:36px;cursor:pointer;border:none;background:none;">
+            <span id="edit-server-color-hex" style="font-family:var(--font-mono);font-size:0.85rem;color:var(--text-dim);">#55FF55</span>
+          </div>
+        </div>
+
+        <div class="setting-group" style="margin-bottom:16px;">
+          <label>Sincronizar con S3</label>
+          <div style="display:flex;align-items:center;gap:10px;margin-top:6px;">
+            <input type="checkbox" id="edit-sync-s3" checked style="transform:scale(1.2);">
+            <span style="color:var(--text-dim);font-size:0.85rem;">Si se desactiva, los datos del servidor se mantendrán localmente sin subirlos a S3.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card: Avatar del Panel -->
+      <div class="card">
+        <h3><i data-lucide="image" style="width:18px;height:18px;vertical-align:middle;margin-right:6px;"></i>Avatar del Panel</h3>
+        <p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:16px;line-height:1.5;">
+          Imagen que representa al servidor dentro del panel de administración. Acepta PNG, JPG, GIF o WebP.
+        </p>
+        <div style="display:flex;align-items:center;gap:14px;">
+          <div id="edit-avatar-preview" style="width:64px;height:64px;background:var(--bg-core);border:2px solid var(--border-color);border-radius:var(--border-radius);overflow:hidden;flex-shrink:0;display:flex;align-items:center;justify-content:center;">
+            <img id="edit-avatar-preview-img" src="" style="width:64px;height:64px;object-fit:cover;display:none;">
+            <i data-lucide="image" style="width:24px;height:24px;opacity:0.3;" id="edit-avatar-placeholder-icon"></i>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <ui-button variant="secondary" id="btn-edit-avatar" style="width:auto;display:inline-flex;">
+              <i data-lucide="upload" style="width:14px;height:14px;"></i> Subir Avatar
+            </ui-button>
+            <ui-button variant="danger" size="sm" id="btn-remove-avatar" style="width:auto;display:none;">
+              <i data-lucide="trash-2" style="width:13px;height:13px;"></i> Quitar
+            </ui-button>
+          </div>
+        </div>
+        <ui-input type="file" id="edit-server-avatar" accept="image/png,image/jpeg,image/gif,image/webp" hidden></ui-input>
+      </div>
+
+      <!-- Card: Skin de Jugador -->
+      <div class="card">
+        <h3><i data-lucide="shirt" style="width:18px;height:18px;vertical-align:middle;margin-right:6px;"></i>Skin de Jugador</h3>
+        <p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:14px;line-height:1.5;">
+          Aplica una skin personalizada a un jugador. Requiere el plugin <strong>SkinRestorer</strong> instalado en el servidor.
+        </p>
+        <div style="background:var(--bg-core);border:1px solid var(--border-color);border-radius:var(--border-radius);padding:12px;margin-bottom:14px;">
+          <p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:8px;">¿No tienes SkinRestorer instalado?</p>
+          <ui-button variant="secondary" size="sm" id="btn-install-skinrestorer">
+            <i data-lucide="download" style="width:14px;height:14px;"></i> Instalar Automáticamente
+          </ui-button>
+          <div id="install-sr-status" style="color:var(--text-dim);font-size:0.85rem;display:none;margin-top:6px;"></div>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:12px;">
+          <div>
+            <label style="display:block;margin-bottom:5px;color:var(--text-main);font-size:0.875rem;">Nombre de Jugador:</label>
+            <ui-input id="skin-username" placeholder="Ej: Steve"></ui-input>
+          </div>
+          <div>
+            <label style="display:block;margin-bottom:5px;color:var(--text-main);font-size:0.875rem;">Archivo Skin (.png):</label>
+            <ui-input type="file" id="skin-file" accept=".png"></ui-input>
+          </div>
+          <div id="skin-status" style="color:var(--text-dim);font-size:0.85rem;display:none;"></div>
+          <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <ui-button variant="success" id="btn-skin-submit">
+              <i data-lucide="upload" style="width:16px;height:16px;"></i> Subir y Aplicar
+            </ui-button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Card: Icono de Minecraft -->
+      <div class="card">
+        <h3><i data-lucide="image" style="width:18px;height:18px;vertical-align:middle;margin-right:6px;"></i>Icono de Minecraft</h3>
+        <p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:14px;line-height:1.5;">
+          El logo que aparece en la lista de servidores del juego (<code>server-icon.png</code>, 64×64 px). Se aplica al iniciar el servidor.
+        </p>
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:12px;">
+          <div id="edit-icon-preview" style="width:64px;height:64px;background:var(--bg-core);border:2px solid var(--border-color);border-radius:2px;overflow:hidden;flex-shrink:0;image-rendering:pixelated;display:flex;align-items:center;justify-content:center;">
+            <img id="edit-icon-preview-img" src="" style="width:64px;height:64px;object-fit:cover;display:none;">
+            <i data-lucide="image" style="width:24px;height:24px;opacity:0.3;" id="edit-icon-placeholder-icon"></i>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px;">
+            <ui-button variant="secondary" id="btn-edit-icon" style="width:auto;display:inline-flex;">
+              <i data-lucide="upload" style="width:14px;height:14px;"></i> Subir Icono
+            </ui-button>
+            <ui-button variant="danger" size="sm" id="btn-remove-icon" style="width:auto;display:none;">
+              <i data-lucide="trash-2" style="width:13px;height:13px;"></i> Quitar
+            </ui-button>
+          </div>
+        </div>
+        <ui-input type="file" id="edit-server-icon" accept="image/png,image/jpeg,image/webp" hidden></ui-input>
+      </div>
+
+      <!-- Card: MOTD -->
+      <div class="card" style="grid-column: span 2;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+          <h3 style="margin:0;"><i data-lucide="message-square" style="width:18px;height:18px;vertical-align:middle;margin-right:6px;"></i>MOTD (Mensaje del Servidor)</h3>
+          <ui-button variant="blue" size="sm" id="btn-motd-templates" style="width:auto;"><i data-lucide="layout-template" style="width:14px;height:14px;"></i> Plantillas</ui-button>
+        </div>
+        
+        <p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:14px;line-height:1.5;">
+          Texto que aparece en la lista de servidores de Minecraft. Puedes usar los botones a continuación para insertar estilos rápidamente, o usar <code>\n</code> para una segunda línea.
+        </p>
+
+        <!-- Editor Toolbar -->
+        <div class="motd-toolbar" style="display:flex; flex-wrap:wrap; gap:4px; padding:6px; background:var(--bg-core); border:1px solid var(--border-color); border-bottom:none; border-radius:var(--border-radius) var(--border-radius) 0 0;">
+          <button type="button" class="motd-tool-btn" data-code="§4" style="color:#AA0000;" title="Rojo Oscuro">■</button>
+          <button type="button" class="motd-tool-btn" data-code="§c" style="color:#FF5555;" title="Rojo">■</button>
+          <button type="button" class="motd-tool-btn" data-code="§6" style="color:#FFAA00;" title="Dorado">■</button>
+          <button type="button" class="motd-tool-btn" data-code="§e" style="color:#FFFF55;" title="Amarillo">■</button>
+          <button type="button" class="motd-tool-btn" data-code="§2" style="color:#00AA00;" title="Verde Oscuro">■</button>
+          <button type="button" class="motd-tool-btn" data-code="§a" style="color:#55FF55;" title="Verde">■</button>
+          <button type="button" class="motd-tool-btn" data-code="§b" style="color:#55FFFF;" title="Aqua">■</button>
+          <button type="button" class="motd-tool-btn" data-code="§3" style="color:#00AAAA;" title="Cyan Oscuro">■</button>
+          <button type="button" class="motd-tool-btn" data-code="§1" style="color:#0000AA;" title="Azul Oscuro">■</button>
+          <button type="button" class="motd-tool-btn" data-code="§9" style="color:#5555FF;" title="Azul">■</button>
+          <button type="button" class="motd-tool-btn" data-code="§d" style="color:#FF55FF;" title="Rosa">■</button>
+          <button type="button" class="motd-tool-btn" data-code="§5" style="color:#AA00AA;" title="Morado">■</button>
+          <button type="button" class="motd-tool-btn" data-code="§f" style="color:#FFFFFF;" title="Blanco">■</button>
+          <button type="button" class="motd-tool-btn" data-code="§7" style="color:#AAAAAA;" title="Gris">■</button>
+          <button type="button" class="motd-tool-btn" data-code="§8" style="color:#555555;" title="Gris Oscuro">■</button>
+          <button type="button" class="motd-tool-btn" data-code="§0" style="color:#000000;" title="Negro">■</button>
+          <div style="width:1px; background:var(--border-color); margin:0 4px;"></div>
+          <button type="button" class="motd-tool-btn" data-code="§l" title="Negrita" style="font-weight:bold;">B</button>
+          <button type="button" class="motd-tool-btn" data-code="§o" title="Cursiva" style="font-style:italic;font-family:serif;">I</button>
+          <button type="button" class="motd-tool-btn" data-code="§n" title="Subrayado" style="text-decoration:underline;">U</button>
+          <button type="button" class="motd-tool-btn" data-code="§m" title="Tachado" style="text-decoration:line-through;">S</button>
+          <button type="button" class="motd-tool-btn" data-code="§r" title="Reiniciar Estilo">R</button>
+        </div>
+        <textarea id="edit-server-motd" rows="3" style="width:100%;background:var(--bg-core);color:var(--text-main);border:1px solid var(--border-color);border-radius:0 0 var(--border-radius) var(--border-radius);font-family:var(--font-mono);font-size:0.85rem;padding:10px;resize:vertical;margin-bottom:10px;outline:none;" placeholder="§aMi Servidor §6Epico\n§7Discord: §bdiscord.gg/x"></textarea>
+        
+        <div class="edit-preview-label" style="font-size:0.8rem;color:var(--text-dim);margin-bottom:6px;">Vista previa en vivo:</div>
+        <div id="motd-preview" class="motd-preview" style="min-height:46px;"></div>
+      </div>
+
+    </div>
+
+    <!-- Zona de Peligro -->
+    <div class="card" style="margin-top:20px;border-color:rgba(220,50,50,0.3);">
+      <h3 style="color:var(--text-danger);"><i data-lucide="alert-triangle" style="width:18px;height:18px;vertical-align:middle;margin-right:6px;"></i>Zona de Peligro</h3>
+      <p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:14px;line-height:1.5;">
+        Estas acciones son irreversibles. Asegúrate de tener un respaldo antes de continuar.
+      </p>
+      <ui-button variant="danger" id="btn-delete-server" style="width:auto;">
+        <i data-lucide="trash-2" style="width:16px;height:16px;"></i> Eliminar Servidor
+      </ui-button>
+    </div>
+
+    <!-- Botón Guardar (sticky) -->
+    <div style="display:flex;justify-content:flex-end;margin-top:24px;gap:10px;padding-bottom:20px;">
+      <ui-button variant="success" id="btn-save-server-settings">
+        <i data-lucide="save" style="width:16px;height:16px;"></i> Guardar Cambios
+      </ui-button>
+    </div>
+
+  </div>
+
+  <!-- Modal Plantillas MOTD -->
+  <ui-modal id="modal-motd-templates" title="Plantillas de MOTD" style="display:none;">
+    <div style="display:flex;flex-direction:column;gap:12px;max-height:60vh;overflow-y:auto;padding-right:8px;">
+      
+      <div class="motd-template-item card" data-template="§a§l¡BIENVENIDO A MI SERVIDOR!§r\n§7§oSobrevive y construye con amigos..." style="padding:12px;margin:0;">
+        <div class="motd-preview" style="pointer-events:none;margin-bottom:8px;min-height:46px;"><span style="color:#55FF55;font-weight:bold;">¡BIENVENIDO A MI SERVIDOR!</span><br><span style="color:#AAAAAA;font-style:italic;">Sobrevive y construye con amigos...</span></div>
+        <ui-button variant="success" size="sm" class="btn-use-template" style="width:100%;">Usar Plantilla</ui-button>
+      </div>
+
+      <div class="motd-template-item card" data-template="§b⚡ §b§lSERVIDO SURVIVAL §8| §e1.20.X §b⚡\n§7[§a+§7] §fNuevo mundo generado §7[§a+§7]" style="padding:12px;margin:0;">
+        <div class="motd-preview" style="pointer-events:none;margin-bottom:8px;min-height:46px;"><span style="color:#55FFFF;">⚡ </span><span style="color:#55FFFF;font-weight:bold;">SERVIDO SURVIVAL </span><span style="color:#555555;">| </span><span style="color:#FFFF55;">1.20.X </span><span style="color:#55FFFF;">⚡</span><br><span style="color:#AAAAAA;">[</span><span style="color:#55FF55;">+</span><span style="color:#AAAAAA;">] </span><span style="color:#FFFFFF;">Nuevo mundo generado </span><span style="color:#AAAAAA;">[</span><span style="color:#55FF55;">+</span><span style="color:#AAAAAA;">]</span></div>
+        <ui-button variant="success" size="sm" class="btn-use-template" style="width:100%;">Usar Plantilla</ui-button>
+      </div>
+
+      <div class="motd-template-item card" data-template="§6§l✦ §e§lMundo Épico §6§l✦ §8- §7¡Únete ahora!\n§c§l¡Evento de fin de semana activo!" style="padding:12px;margin:0;">
+        <div class="motd-preview" style="pointer-events:none;margin-bottom:8px;min-height:46px;"><span style="color:#FFAA00;font-weight:bold;">✦ </span><span style="color:#FFFF55;font-weight:bold;">Mundo Épico </span><span style="color:#FFAA00;font-weight:bold;">✦ </span><span style="color:#555555;">- </span><span style="color:#AAAAAA;">¡Únete ahora!</span><br><span style="color:#FF5555;font-weight:bold;">¡Evento de fin de semana activo!</span></div>
+        <ui-button variant="success" size="sm" class="btn-use-template" style="width:100%;">Usar Plantilla</ui-button>
+      </div>
+
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-top:16px;">
+      <ui-button variant="secondary" id="btn-close-templates" style="width:auto;">Cerrar</ui-button>
+    </div>
+  </ui-modal>
+
+  <script type="module" src="/js/pages/server-customize.js?v=3"></script>
+</body>
+</html>

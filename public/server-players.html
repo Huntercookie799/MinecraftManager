@@ -6,10 +6,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Jugadores del Servidor - Minecraft Manager</title>
   <meta name="description" content="Gestiona los jugadores en línea de tu servidor de Minecraft.">
-  <link rel="stylesheet" href="/style.css">
-  <script type="module" src="/js/components/index.js"></script>
-  <script type="module" src="/js/components/UISidebar.js"></script>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/js/components/index.js?v=3"></script>
+  <script type="module" src="/js/components/UISidebar.js?v=3"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://unpkg.com/skinview3d@3.0.0-alpha.1/bundles/skinview3d.bundle.js?v=3"></script>
   <script>
     window.addEventListener('load', () => {
       const loader = document.getElementById('initial-loader');
@@ -19,7 +20,7 @@
       }
     });
   </script>
-  <script type="module" src="/js/components/UIThemeToggle.js"></script>
+  <script type="module" src="/js/components/UIThemeToggle.js?v=3"></script>
 </head>
 <body>
   <div id="initial-loader" class="initial-loader">
@@ -106,9 +107,65 @@
         </div>
       </div>
 
+      <!-- Panel del Historial Completo -->
+      <div class="card players-card" id="registry-card" style="flex: 1; margin-top: 20px;">
+        <div class="players-card-header" style="display: flex; justify-content: space-between; align-items: center;">
+          <h3><i data-lucide="database" style="width:20px;height:20px;"></i> Registro Histórico</h3>
+          <span class="players-count-badge" id="registry-count-badge">0</span>
+        </div>
+        <div id="registry-list" class="players-list" style="max-height: 400px; overflow-y: auto;">
+          <div class="players-empty" id="registry-empty" style="display:none;">
+            <span class="players-empty-icon">📂</span>
+            <p>No hay registros guardados</p>
+          </div>
+        </div>
+      </div>
+
     </div>
   </div>
 
-  <script type="module" src="/js/pages/server-players.js"></script>
+  <!-- Modal de Detalle de Jugador -->
+  <ui-modal id="player-detail-modal" title="Detalle del Jugador" width="450px" style="display: none;">
+    <div style="display: flex; flex-direction: column; gap: 20px;">
+      
+      <!-- Fila superior: Info básica -->
+      <div style="display: flex; align-items: center; gap: 15px; background: var(--bg-core); padding: 15px; border-radius: var(--border-radius); border: 1px solid var(--border-color);">
+        <img id="detail-avatar" src="" style="width: 60px; height: 60px; border-radius: 8px; image-rendering: pixelated; flex-shrink: 0;" />
+        <div style="flex: 1;">
+          <h3 id="detail-name" style="margin: 0; font-size: 1.4rem;">...</h3>
+          <p id="detail-status" style="margin: 5px 0 0 0; font-size: 0.9rem; color: var(--text-dim);">Offline</p>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 20px; align-items: flex-start;">
+        <!-- Lado izquierdo: Skin 3D -->
+        <div style="text-align: center; flex-shrink: 0;">
+          <div id="detail-skin-viewer" style="width: 150px; height: 250px; background: #111; border-radius: var(--border-radius); border: 1px solid var(--border-color); overflow: hidden;"></div>
+        </div>
+
+        <!-- Lado derecho: Métricas -->
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 15px;">
+          <div class="metric-box" style="background: var(--bg-core); padding: 12px; border-radius: 6px; border: 1px solid var(--border-color);">
+            <div style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; margin-bottom: 4px;">Tiempo de Juego Total</div>
+            <div id="detail-playtime" style="font-size: 1.1rem; font-weight: bold; color: var(--color-primary);">0s</div>
+          </div>
+          
+          <div class="metric-box" style="background: var(--bg-core); padding: 12px; border-radius: 6px; border: 1px solid var(--border-color);">
+            <div style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; margin-bottom: 4px;">Ubicación Actual</div>
+            <div id="detail-coords" style="font-size: 0.9rem; font-family: monospace;">Desconocido</div>
+            <div id="detail-dim" style="font-size: 0.85rem; margin-top: 4px; color: var(--text-dim);"></div>
+          </div>
+
+          <div class="metric-box" style="background: var(--bg-core); padding: 12px; border-radius: 6px; border: 1px solid var(--border-color);">
+            <div style="font-size: 0.75rem; color: var(--text-dim); text-transform: uppercase; margin-bottom: 4px;">Última Vez Visto</div>
+            <div id="detail-lastseen" style="font-size: 0.9rem;">-</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </ui-modal>
+
+  <script type="module" src="/js/pages/server-players.js?v=3"></script>
 </body>
 </html>

@@ -6,20 +6,18 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Archivos del Servidor - Minecraft Manager</title>
   <meta name="description" content="Gestiona los archivos de tu servidor de Minecraft.">
-  <link rel="stylesheet" href="/style.css">
-  <script type="module" src="/js/components/index.js"></script>
-  <script type="module" src="/js/components/UISidebar.js"></script>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/js/components/index.js?v=3"></script>
+  <script type="module" src="/js/components/UISidebar.js?v=3"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
   <script>
     window.addEventListener('load', () => {
       const loader = document.getElementById('initial-loader');
-      if (loader) {
-        loader.classList.add('fade-out');
-        setTimeout(() => loader.remove(), 300);
-      }
+      if (loader) { loader.classList.add('fade-out'); setTimeout(() => loader.remove(), 300); }
+      if (window.lucide) lucide.createIcons();
     });
   </script>
-  <script type="module" src="/js/components/UIThemeToggle.js"></script>
+  <script type="module" src="/js/components/UIThemeToggle.js?v=3"></script>
 </head>
 <body>
   <div id="initial-loader" class="initial-loader">
@@ -27,71 +25,119 @@
     <div class="text">CARGANDO ARCHIVOS...</div>
   </div>
 
-  <!-- Sidebar Component -->
   <ui-sidebar type="main" active="dashboard"></ui-sidebar>
   <ui-sidebar type="server" active="files"></ui-sidebar>
 
-  <!-- Content -->
   <div class="content" id="app-container">
-    
-    <!-- Header General -->
+
+    <!-- Header -->
     <div class="header">
       <div class="server-title">
         <h2 id="current-server-name"><span class="skeleton skeleton-title"></span></h2>
         <p id="current-server-info"><span class="skeleton skeleton-sub"></span></p>
       </div>
-      <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
-        <!-- World Exists Indicator -->
-        <div id="world-exists-badge" class="world-exists-badge" style="display:none;">
-          <span id="world-exists-icon">🌍</span>
-          <span id="world-exists-label">Mundo generado</span>
-        </div>
-        <!-- World Time Indicator -->
-        <div id="world-time-indicator" class="world-time-badge" style="display: none;">
-          <div class="time-icon-wrap" id="time-icon-wrap">
-            <span class="time-icon" id="time-icon">☀️</span>
-          </div>
-          <div class="time-info">
-            <span class="time-label" id="time-label">Día</span>
-            <span class="time-value" id="time-value">06:00</span>
-          </div>
-        </div>
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
         <div id="status-badge" class="status-badge offline">
           <div class="dot"></div>
-          <span id="status-text" class="text">OFFLINE</span>
+          <span id="status-text" class="text">Cargando...</span>
         </div>
       </div>
     </div>
 
-    <!-- Vista: Archivos -->
-    <div id="view-files" class="tab-content active" style="flex: 1; display: flex;">
-      <div class="card" style="flex: 1;">
-        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; border-bottom: 1px solid var(--border-color); padding-bottom: 12px;">
-          <div style="display: flex; gap: 10px; align-items: center;">
-            <h3 style="margin: 0; padding: 0; border: none; display: flex; align-items: center; gap: 10px;">
-              <i data-lucide="folder-open" style="width:20px;height:20px;"></i>
-              Archivos del Servidor
-            </h3>
-            <div class="storage-toggle" style="display: flex; background: #000; border: 1px solid var(--border-color); border-radius: var(--border-radius); padding: 2px;">
-              <ui-button variant="toggle" accent="success" active id="btn-storage-local">LOCAL</ui-button>
-              <ui-button variant="toggle" accent="info" id="btn-storage-r2">CLOUDFLARE R2</ui-button>
-            </div>
-          </div>
-          <div id="files-breadcrumb" class="files-breadcrumb">
-            <span class="breadcrumb-item breadcrumb-root" id="breadcrumb-root">📁 Raíz</span>
+    <!-- Explorador de Archivos -->
+    <div class="card fm-card">
+
+      <!-- Toolbar -->
+      <div class="fm-toolbar">
+        <!-- Izquierda: breadcrumb -->
+        <div class="fm-breadcrumb-wrap">
+          <button id="fm-btn-up" class="fm-icon-btn" title="Subir directorio" disabled>
+            <i data-lucide="arrow-left" style="width:15px;height:15px;"></i>
+          </button>
+          <nav id="fm-breadcrumb" class="fm-breadcrumb" aria-label="Ruta actual">
+            <span class="fm-bread-item fm-bread-root" data-path=".">
+              <i data-lucide="server" style="width:13px;height:13px;"></i> Raíz
+            </span>
+          </nav>
+        </div>
+
+        <!-- Derecha: acciones -->
+        <div class="fm-toolbar-actions">
+          <!-- Botón eliminar selección (aparece cuando hay selección) -->
+          <button id="fm-btn-delete-sel" class="fm-action-btn danger" style="display:none;" title="Eliminar seleccionados">
+            <i data-lucide="trash-2" style="width:15px;height:15px;"></i>
+            <span id="fm-sel-count">0</span> seleccionados
+          </button>
+          <!-- Storage toggle -->
+          <div class="fm-storage-toggle">
+            <button id="btn-storage-local" class="fm-toggle-btn active" data-storage="local">
+              <i data-lucide="hard-drive" style="width:13px;height:13px;"></i> Local
+            </button>
+            <button id="btn-storage-r2" class="fm-toggle-btn" data-storage="r2">
+              <i data-lucide="cloud" style="width:13px;height:13px;"></i> R2
+            </button>
           </div>
         </div>
-        <div id="files-list" class="files-list">
-          <div class="files-loading" id="files-loading">
-            <div class="files-spinner"></div>
-            <p>Cargando archivos...</p>
-          </div>
-        </div>
+      </div>
+
+      <!-- Tabla de archivos -->
+      <div class="fm-table-wrap">
+        <table class="fm-table" id="fm-table">
+          <thead>
+            <tr>
+              <th class="fm-col-check">
+                <input type="checkbox" id="fm-check-all" title="Seleccionar todos">
+              </th>
+              <th class="fm-col-icon"></th>
+              <th class="fm-col-name">Nombre</th>
+              <th class="fm-col-size">Tamaño</th>
+              <th class="fm-col-date">Modificado</th>
+              <th class="fm-col-actions">Acciones</th>
+            </tr>
+          </thead>
+          <tbody id="fm-tbody">
+            <tr>
+              <td colspan="6" class="fm-loading-cell">
+                <div class="fm-loading">
+                  <div class="files-spinner"></div>
+                  <span>Cargando archivos...</span>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Footer: info selección + ruta actual -->
+      <div class="fm-footer">
+        <span id="fm-footer-info" class="fm-footer-info">—</span>
       </div>
     </div>
 
   </div>
 
-  <script type="module" src="/js/pages/server-files.js"></script>
+  <!-- ── Modal: Editor de texto ── -->
+  <div id="fm-editor-overlay" class="fm-editor-overlay" style="display:none;" role="dialog" aria-modal="true">
+    <div class="fm-editor-panel">
+      <div class="fm-editor-header">
+        <div class="fm-editor-title">
+          <i data-lucide="file-text" style="width:16px;height:16px;"></i>
+          <span id="fm-editor-filename">archivo.yml</span>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <span id="fm-editor-status" class="fm-editor-status"></span>
+          <button id="fm-editor-save" class="fm-editor-btn primary">
+            <i data-lucide="save" style="width:14px;height:14px;"></i> Guardar
+          </button>
+          <button id="fm-editor-close" class="fm-editor-btn">
+            <i data-lucide="x" style="width:14px;height:14px;"></i>
+          </button>
+        </div>
+      </div>
+      <textarea id="fm-editor-content" class="fm-editor-textarea" spellcheck="false" autocorrect="off" autocapitalize="off"></textarea>
+    </div>
+  </div>
+
+  <script type="module" src="/js/pages/server-files.js?v=3"></script>
 </body>
 </html>
