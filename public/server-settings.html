@@ -180,6 +180,126 @@
                 <option value="spectator">Espectador (spectator)</option>
               </select>
             </div>
+
+            <div class="setting-group">
+              <label for="prop-allow-flight">Vuelo (allow-flight)</label>
+              <p class="desc">Permite el vuelo incluso sin estar en modo creativo (antihack lo bloquea por defecto).</p>
+              <select id="prop-allow-flight" name="allow-flight">
+                <option value="false">Desactivado (false)</option>
+                <option value="true">Activado (true)</option>
+              </select>
+            </div>
+
+            <div class="setting-group">
+              <label for="prop-force-gamemode">Forzar modo de juego</label>
+              <p class="desc">Vuelve a poner a los jugadores el modo por defecto al reingresar.</p>
+              <select id="prop-force-gamemode" name="force-gamemode">
+                <option value="false">Desactivado (false)</option>
+                <option value="true">Activado (true)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Columna 3: Acceso y Mundo -->
+          <div>
+            <div class="setting-group">
+              <label for="prop-white-list">Whitelist</label>
+              <p class="desc">Solo los jugadores en la lista blanca pueden entrar.</p>
+              <select id="prop-white-list" name="white-list">
+                <option value="false">Desactivado (false)</option>
+                <option value="true">Activado (true)</option>
+              </select>
+            </div>
+
+            <div class="setting-group">
+              <label for="prop-enforce-whitelist">Forzar whitelist</label>
+              <p class="desc">Expulsa a los jugadores conectados que no estén en la lista blanca.</p>
+              <select id="prop-enforce-whitelist" name="enforce-whitelist">
+                <option value="false">Desactivado (false)</option>
+                <option value="true">Activado (true)</option>
+              </select>
+            </div>
+
+            <div class="setting-group">
+              <label for="prop-spawn-protection">Protección del Spawn</label>
+              <p class="desc">Radio en bloques donde solo los operadores pueden modificar (0 = desactivada).</p>
+              <input type="number" id="prop-spawn-protection" name="spawn-protection" value="16" min="0" max="100">
+            </div>
+
+            <div class="setting-group">
+              <label for="prop-level-name">Nombre del Mundo</label>
+              <p class="desc">Carpeta del mundo activo.</p>
+              <input type="text" id="prop-level-name" name="level-name" value="world">
+            </div>
+
+            <div class="setting-group">
+              <label for="prop-level-seed">Semilla (Seed)</label>
+              <p class="desc">Semilla de generación del mundo. Vacío = aleatoria.</p>
+              <input type="text" id="prop-level-seed" name="level-seed" value="">
+            </div>
+
+            <div class="setting-group">
+              <label for="prop-hardcore">Hardcore</label>
+              <p class="desc">Muerte permanente: al morir se expulsa y el mundo se pone en modo espectador.</p>
+              <select id="prop-hardcore" name="hardcore">
+                <option value="false">Desactivado (false)</option>
+                <option value="true">Activado (true)</option>
+              </select>
+            </div>
+
+            <div class="setting-group">
+              <label for="prop-simulation-distance">Distancia de Simulación</label>
+              <p class="desc">Entidades y redstone activos cerca del jugador. Menor valor = mejor rendimiento.</p>
+              <input type="number" id="prop-simulation-distance" name="simulation-distance" value="10" min="3" max="32">
+            </div>
+          </div>
+
+          <!-- Columna 4: Entidades y Generación -->
+          <div>
+            <div class="setting-group">
+              <label for="prop-spawn-monsters">Generar Monstruos</label>
+              <p class="desc">Permite que aparezcan monstruos en el mundo.</p>
+              <select id="prop-spawn-monsters" name="spawn-monsters">
+                <option value="true">Activado (true)</option>
+                <option value="false">Desactivado (false)</option>
+              </select>
+            </div>
+
+            <div class="setting-group">
+              <label for="prop-spawn-animals">Generar Animales</label>
+              <p class="desc">Permite que aparezcan animales pasivos.</p>
+              <select id="prop-spawn-animals" name="spawn-animals">
+                <option value="true">Activado (true)</option>
+                <option value="false">Desactivado (false)</option>
+              </select>
+            </div>
+
+            <div class="setting-group">
+              <label for="prop-spawn-npcs">Generar Aldeanos</label>
+              <p class="desc">Permite que aparezcan aldeanos y otros NPCs.</p>
+              <select id="prop-spawn-npcs" name="spawn-npcs">
+                <option value="true">Activado (true)</option>
+                <option value="false">Desactivado (false)</option>
+              </select>
+            </div>
+
+            <div class="setting-group">
+              <label for="prop-generate-structures">Generar Estructuras</label>
+              <p class="desc">Aldeas, templos, fortalezas y demás estructuras en mundos nuevos.</p>
+              <select id="prop-generate-structures" name="generate-structures">
+                <option value="true">Activado (true)</option>
+                <option value="false">Desactivado (false)</option>
+              </select>
+            </div>
+
+            <div class="setting-group">
+              <label for="prop-keep-spawn-loaded">Mantener Spawn Cargado</label>
+              <p class="desc">Mantiene el spawn siempre cargado aunque no haya jugadores cerca.</p>
+              <select id="prop-keep-spawn-loaded" name="keep-spawn-loaded">
+                <option value="true">Activado (true)</option>
+                <option value="false">Desactivado (false)</option>
+              </select>
+            </div>
           </div>
         </div>
       </form>

@@ -4,6 +4,7 @@ import { prisma } from "./app/Models/prisma";
 import { serverManager } from "./app/Services/ServerManager";
 import { portForwardService } from "./app/Services/PortForwardService";
 import { minecraftProxyRouter } from "./app/Services/MinecraftProxyRouter";
+import { lanDiscovery } from "./app/Services/LanDiscoveryService";
 
 async function main(): Promise<void> {
   const app = await buildApp();
@@ -48,11 +49,15 @@ async function main(): Promise<void> {
   // minecraftProxyRouter.start([443, 80]).
   await minecraftProxyRouter.start(env.proxyPorts.length ? env.proxyPorts : [443, 80]);
 
+  // Descubrimiento por broadcast UDP: permite que los scripts de sincronización
+  // de hosts de los jugadores encuentren la IP actual aunque cambie de red.
+  lanDiscovery.start();
+
   // Shutdown graceful: detener los servidores gestionados para no dejar JVMs huérfanas
   for (const signal of ["SIGINT", "SIGTERM"] as const) {
     process.on(signal, () => {
       console.log(`[server] ${signal} recibido — deteniendo servidores...`);
-      void Promise.allSettled([serverManager.stopAll(), portForwardService.stopAll(), minecraftProxyRouter.stop()]).finally(() => process.exit(0));
+      void Promise.allSettled([serverManager.stopAll(), portForwardService.stopAll(), minecraftProxyRouter.stop(), Promise.resolve(lanDiscovery.stop())]).finally(() => process.exit(0));
     });
   }
 

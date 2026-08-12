@@ -1,3 +1,4 @@
+import { API } from '../utils/api.js';
 import { DOM } from '../utils/dom.js';
 import '../components/index.js';
 import { ServerHeader } from './server-header.js';
@@ -53,7 +54,7 @@ window.showPlayerDetails = function(name, x, y, z, dimension, playtime, isOnline
   
   // Destruir visor previo si existe
   if (skinViewer) {
-    skinViewer.dispose();
+    try { skinViewer.dispose(); } catch (e) { /* ignorar si el visor ya no existe */ }
     skinViewer = null;
     DOM.get('detail-skin-viewer').innerHTML = '';
   }
@@ -75,7 +76,7 @@ window.showPlayerDetails = function(name, x, y, z, dimension, playtime, isOnline
     skinViewer.autoRotateSpeed = 0.5;
   }
   
-  modal.open();
+  DOM.show(modal);
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -172,10 +173,9 @@ document.addEventListener('DOMContentLoaded', async () => {
   
   async function loadRegistry() {
     try {
-      const res = await fetch(`/api/server/${serverId}/players`);
-      if (!res.ok) return;
-      const data = await res.json();
-      if (data.success) {
+      // El endpoint está protegido: API.call agrega el token automáticamente.
+      const data = await API.call(`/${serverId}/players`, 'GET', null, '/api/server');
+      if (data && data.success) {
         renderRegistry(data.players);
       }
     } catch (e) {
@@ -224,6 +224,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
     
     if (window.lucide) window.lucide.createIcons();
+  }
+
+  // ─── Modal de detalle: abrir/cerrar ─────────────────────────────────────
+  const detailModal = DOM.get('player-detail-modal');
+  if (detailModal) {
+    DOM.on('btn-close-player-detail', 'click', () => DOM.hide(detailModal));
+    // Cerrar al hacer click fuera de la caja del modal
+    detailModal.addEventListener('click', (e) => {
+      if (e.target === detailModal) DOM.hide(detailModal);
+    });
   }
 
   // Load registry initially

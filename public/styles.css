@@ -1119,6 +1119,53 @@ ui-input[variant="auth"] .auth-input-wrap input {
   margin-top: 20px;
 }
 
+/* ── Alertas (Alerts.js) ─────────────────────────────────────────────── */
+.alert-modal .modal-box {
+  max-width: 420px;
+}
+.alert-modal .modal-body {
+  padding: 26px 30px;
+}
+.alert-modal-danger .modal-header {
+  background: var(--color-danger);
+}
+.alert-modal-icon {
+  text-align: center;
+  margin-bottom: 14px;
+}
+.alert-modal-icon i {
+  width: 42px;
+  height: 42px;
+  color: var(--text-warning);
+}
+.alert-modal-danger .alert-modal-icon i {
+  color: var(--color-danger);
+}
+.alert-modal-message {
+  margin: 0 0 8px;
+  text-align: center;
+  font-size: 0.95rem;
+  line-height: 1.55;
+  color: var(--text-main);
+  word-break: break-word;
+}
+.alert-modal-sub {
+  margin: 0;
+  text-align: center;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: var(--text-dim);
+}
+.alert-modal-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 24px;
+}
+.alert-modal-actions .btn {
+  min-width: 130px;
+}
+
 .modal-box label {
   display: block;
   margin-top: 15px;

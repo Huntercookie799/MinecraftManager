@@ -10,6 +10,7 @@
   <script type="module" src="/js/components/index.js?v=3"></script>
   <script type="module" src="/js/components/UISidebar.js?v=3"></script>
   <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script>
     window.addEventListener('load', () => {
       const loader = document.getElementById('initial-loader');
@@ -90,6 +91,26 @@
         <ui-input variant="command" id="new-world-name" placeholder="Ej. skyblock_world"></ui-input>
         <p style="font-size:0.75rem;color:var(--text-dim);margin-top:6px;">Solo letras, números y guiones bajos. Sin espacios.</p>
       </div>
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" id="new-world-allow-mods" checked style="accent-color: var(--primary);">
+          <label for="new-world-allow-mods" style="font-size:0.875rem;color:var(--text-main);cursor:pointer;">Permitir Mods</label>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" id="new-world-allow-plugins" checked style="accent-color: var(--primary);">
+          <label for="new-world-allow-plugins" style="font-size:0.875rem;color:var(--text-main);cursor:pointer;">Permitir Plugins</label>
+        </div>
+      </div>
+      <div>
+        <label style="display:block;margin-bottom:6px;font-size:0.875rem;color:var(--text-main);">Modpack (opcional):</label>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <input type="hidden" id="new-world-modpack" value="">
+          <ui-button variant="secondary" id="btn-search-modpack" style="width:auto;"><i data-lucide="search" style="width:14px;height:14px;"></i> Buscar Modpack</ui-button>
+          <span id="selected-modpack-name" style="font-size:0.85rem;color:var(--text-main);font-weight:600;display:none;"></span>
+          <button id="btn-clear-modpack" style="background:none;border:none;color:var(--color-danger);cursor:pointer;display:none;padding:4px;"><i data-lucide="x-circle" style="width:16px;height:16px;"></i></button>
+        </div>
+        <p style="font-size:0.75rem;color:var(--text-dim);margin-top:6px;">Si elegís un modpack, el mundo se crea con sus mods instalados (solo modpacks compatibles con tu versión de Minecraft). Puede tardar unos segundos.</p>
+      </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;">
         <ui-button variant="secondary" id="btn-cancel-new-world">Cancelar</ui-button>
         <ui-button variant="success" id="btn-create-world">
@@ -107,6 +128,16 @@
         <label style="display:block;margin-bottom:6px;font-size:0.875rem;color:var(--text-main);">Nuevo nombre:</label>
         <ui-input id="edit-world-name" placeholder="Ej. mi_mundo_epico"></ui-input>
       </div>
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <div style="display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" id="edit-world-allow-mods" style="accent-color: var(--primary);">
+          <label for="edit-world-allow-mods" style="font-size:0.875rem;color:var(--text-main);cursor:pointer;">Permitir Mods</label>
+        </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" id="edit-world-allow-plugins" style="accent-color: var(--primary);">
+          <label for="edit-world-allow-plugins" style="font-size:0.875rem;color:var(--text-main);cursor:pointer;">Permitir Plugins</label>
+        </div>
+      </div>
       <div style="display:flex;gap:10px;justify-content:flex-end;">
         <ui-button variant="secondary" id="btn-cancel-edit-world">Cancelar</ui-button>
         <ui-button variant="success" id="btn-save-edit-world">
@@ -116,6 +147,59 @@
     </div>
   </ui-modal>
 
-  <script type="module" src="/js/pages/server-worlds.js?v=3"></script>
+  <!-- ── Modal: Buscar Modpack ── -->
+  <ui-modal id="modpack-search-modal" title="Buscar Modpack" width="80vw" style="display:none;">
+    <div style="position:relative;height:100%;">
+      <!-- Search View -->
+      <div id="modpack-search-view" style="display:flex;flex-direction:column;gap:16px;height:100%;">
+        <div style="display:flex;gap:8px;">
+          <ui-input id="modpack-search-input" placeholder="Ej: Better MC, RLcraft..." style="flex:1;"></ui-input>
+          <select id="modpack-search-category" class="server-select" style="width:200px;">
+            <option value="">Todas las categorías</option>
+            <option value="adventure">Aventura</option>
+            <option value="magic">Magia</option>
+            <option value="technology">Tecnología</option>
+            <option value="rpg">RPG</option>
+            <option value="exploration">Exploración</option>
+            <option value="quests">Misiones / Quests</option>
+            <option value="hardcore">Hardcore</option>
+            <option value="multiplayer">Multijugador</option>
+            <option value="optimization">Optimización</option>
+            <option value="vanilla-plus">Vanilla+</option>
+          </select>
+          <ui-button variant="primary" id="btn-execute-modpack-search" style="width:auto; white-space:nowrap;"><i data-lucide="search" style="width:15px;height:15px;"></i> Buscar</ui-button>
+        </div>
+        <div id="modpack-search-status" style="display:none;color:var(--text-dim);font-size:0.85rem;"></div>
+        <div id="modpack-search-results" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;overflow-y:auto;max-height:60vh;padding-right:8px;"></div>
+      </div>
+      
+      <!-- Details View -->
+      <div id="modpack-details-view" style="display:none;flex-direction:column;gap:16px;height:100%;max-height:65vh;overflow-y:auto;padding-right:8px;">
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <ui-button id="btn-back-to-search" style="width:auto;"><i data-lucide="arrow-left" style="width:16px;height:16px;margin-right:6px;"></i> Volver</ui-button>
+          <ui-button variant="primary" id="btn-select-modpack-details" style="width:auto;font-weight:bold;">Seleccionar Modpack</ui-button>
+        </div>
+        <div id="modpack-details-content" style="display:flex;flex-direction:column;gap:16px;"></div>
+      </div>
+    </div>
+    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:16px;">
+        <ui-button variant="secondary" id="btn-close-modpack-search">Cerrar</ui-button>
+    </div>
+  </ui-modal>
+
+  <!-- ── Modal: Tutorial de descarga (SKLauncher) ── -->
+  <ui-modal id="tutorial-modal" title="Manual de Instalación" style="display:none;" width="560px">
+    <div style="display:flex;flex-direction:column;gap:16px;">
+      <div id="tutorial-content" style="display:flex;flex-direction:column;gap:14px;">
+        <p style="color:var(--text-dim);font-size:0.85rem;">Cargando tutorial...</p>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end;">
+        <ui-button variant="blue" id="btn-download-pdf" style="width:auto;"><i data-lucide="file-text" style="width:15px;height:15px;"></i> Descargar manual (PDF)</ui-button>
+        <ui-button variant="secondary" id="btn-close-tutorial">Cerrar</ui-button>
+      </div>
+    </div>
+  </ui-modal>
+
+  <script type="module" src="/js/pages/server-worlds.js?v=11"></script>
 </body>
 </html>

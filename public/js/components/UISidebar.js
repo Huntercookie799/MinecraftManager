@@ -14,6 +14,7 @@ export class UISidebar extends HTMLElement {
         </div>
         <ul class="nav">
           <li class="${active === 'dashboard' ? 'active' : ''}" data-tooltip="Mis Servidores"><a href="/dashboard.html"><i data-lucide="server"></i> <span class="nav-text">Mis Servidores</span></a></li>
+          <li class="${active === 'monitor' ? 'active' : ''}" data-tooltip="Supervisión"><a href="/monitor.html"><i data-lucide="activity"></i> <span class="nav-text">Supervisión</span></a></li>
           <li class="${active === 'profile' ? 'active' : ''}" data-tooltip="Mi Perfil"><a href="/profile.html"><i data-lucide="user"></i> <span class="nav-text">Mi Perfil</span></a></li>
           <li data-tooltip="Cerrar Sesión" style="margin-top: auto;"><a href="#" id="btn-logout"><i data-lucide="log-out"></i> <span class="nav-text">Cerrar Sesión</span></a></li>
         </ul>

@@ -155,7 +155,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const statusEl = document.getElementById('install-sr-status');
     if (statusEl) { statusEl.style.display = 'block'; statusEl.textContent = 'Instalando...'; }
     try {
-      await API.call(`/${serverId}/addons/install-skinrestorer`, 'POST', {}, '/api/server');
+      await API.call(`/${serverId}/install-skinrestorer`, 'POST', {}, '/api/server');
       if (statusEl) statusEl.textContent = '✓ SkinRestorer instalado';
       window.Toast?.show('SkinRestorer instalado correctamente', 'success');
     } catch (e) {
@@ -177,12 +177,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     formData.append('skin', file);
     if (statusEl) { statusEl.style.display = 'block'; statusEl.textContent = 'Aplicando skin...'; }
     try {
-      const res = await fetch(`/api/server/${serverId}/skin`, {
+      const res = await fetch(`/api/server/${serverId}/skins`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('mm_token')}` },
         body: formData,
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const errorText = await res.text();
+        let errorMsg = errorText;
+        try {
+          const json = JSON.parse(errorText);
+          if (json.error) errorMsg = json.error;
+        } catch (err) {}
+        throw new Error(errorMsg);
+      }
       if (statusEl) statusEl.textContent = '✓ Skin aplicada';
       window.Toast?.show('Skin aplicada correctamente', 'success');
     } catch (e) {
@@ -201,7 +209,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     const formData = new FormData();
     formData.append('name', name ?? '');
-    formData.append('color', color ?? '');
+    formData.append('accentColor', color ?? '');
     formData.append('syncS3', syncS3 ? 'true' : 'false');
     formData.append('motd', motd ?? '');
 
@@ -213,7 +221,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     try {
       const res = await fetch(`/api/server/${serverId}/settings`, {
         method: 'PUT',
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('mm_token')}` },
         body: formData,
       });
       if (!res.ok) throw new Error(await res.text());

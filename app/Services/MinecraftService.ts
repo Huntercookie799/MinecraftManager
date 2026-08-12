@@ -110,6 +110,10 @@ export class MinecraftService extends EventEmitter {
     return this.config.version || "1.21.8";
   }
 
+  get isAdopted(): boolean {
+    return this.adopted;
+  }
+
   async start(): Promise<ServerStatus> {
     if (this.child && !this.child.killed) {
       return this.getStatus();
@@ -895,6 +899,29 @@ export class MinecraftService extends EventEmitter {
       this.state = "ONLINE";
       this.addLog("system", "Minecraft is ONLINE.");
       this.startPolling();
+      this.executePendingCommands();
+    }
+  }
+
+  private async executePendingCommands(): Promise<void> {
+    try {
+      const commands = await prisma.$queryRaw<any[]>`
+        SELECT id, command FROM serverpendingcommand WHERE serverId = ${this.config.id} ORDER BY createdAt ASC
+      `;
+      if (commands && commands.length > 0) {
+        this.addLog("system", `Ejecutando ${commands.length} comandos pendientes...`);
+        for (const row of commands) {
+          try {
+            this.writeRawCommand(row.command);
+            this.addLog("system", `> ${row.command}`);
+            await prisma.$executeRaw`DELETE FROM serverpendingcommand WHERE id = ${row.id}`;
+          } catch (e: any) {
+            this.addLog("system", `Error ejecutando comando pendiente: ${e.message}`);
+          }
+        }
+      }
+    } catch (e: any) {
+      this.addLog("system", `Error comprobando comandos pendientes: ${e.message}`);
     }
   }
 

@@ -17,7 +17,8 @@ model Server {
   createdAt    DateTime       @default(now())
   worlds       World[]
   logs         ServerLog[]
-  players      ServerPlayer[]
+  players         ServerPlayer[]
+  pendingCommands ServerPendingCommand[]
 }
 
 model ServerLog {
@@ -41,4 +42,14 @@ model ServerPlayer {
   createdAt       DateTime @default(now())
 
   @@unique([serverId, name])
+}
+
+model ServerPendingCommand {
+  id        Int      @id @default(autoincrement())
+  serverId  Int
+  server    Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  command   String   @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([serverId])
 }

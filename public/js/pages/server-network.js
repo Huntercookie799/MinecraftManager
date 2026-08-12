@@ -39,20 +39,18 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   async function loadForwardStatus() {
     try {
-      const res = await API.call(`/${serverId}/forward/status`, 'GET', null, '/api/server');
+      const res = await API.call(`/${serverId}/forward`, 'GET', null, '/api/server');
       const statusEl = document.getElementById('forward-status');
-      const urlEl = document.getElementById('forward-url');
       const targetEl = document.getElementById('forward-target');
       const stopBtn = document.getElementById('btn-forward-stop');
       if (!res) return;
       if (res.active) {
-        if (statusEl) statusEl.textContent = `Activo en puerto ${res.port}`;
-        if (urlEl) { urlEl.style.display = 'block'; urlEl.textContent = `URL: ${res.url ?? ''}`; }
+        if (statusEl) statusEl.textContent = `Activo en puerto ${res.publicPort}`;
         if (stopBtn) stopBtn.disabled = false;
       } else {
         if (statusEl) statusEl.textContent = 'Inactivo';
       }
-      if (targetEl) targetEl.textContent = res.target ?? '--';
+      if (targetEl) targetEl.textContent = res.targetPort ? `127.0.0.1:${res.targetPort}` : '--';
     } catch (e) { console.error('Forward status error:', e); }
   }
 
@@ -70,7 +68,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         if (clearBtn) clearBtn.disabled = false;
         if (statusEl) { statusEl.style.display = 'block'; statusEl.textContent = `Hostname activo: ${res.hostname}`; }
-        if (routerEl) routerEl.textContent = res.routerStatus ?? '';
+      }
+      // Estado del router de hostnames (80/443)
+      if (routerEl && Array.isArray(res?.listeners)) {
+        routerEl.textContent = res.listeners.map(l => `${l.listening ? '✓' : '✗'} puerto ${l.port}`).join('  ');
       }
     } catch (e) { console.error('Hostname error:', e); }
   }
@@ -86,7 +87,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   document.getElementById('btn-forward-start')?.addEventListener('click', async () => {
     const port = portSelect?.value === 'custom' ? (portCustom?.querySelector('input')?.value ?? portCustom?.value) : portSelect?.value;
     try {
-      await API.call(`/${serverId}/forward/start`, 'POST', { port }, '/api/server');
+      await API.call(`/${serverId}/forward`, 'POST', { publicPort: Number(port) }, '/api/server');
       window.Toast?.show(`Servidor expuesto en puerto ${port}`, 'success');
       loadForwardStatus();
     } catch (e) { window.Toast?.show('Error al exponer puerto', 'error'); }
@@ -95,14 +96,12 @@ document.addEventListener('DOMContentLoaded', async () => {
   // Stop forward
   document.getElementById('btn-forward-stop')?.addEventListener('click', async () => {
     try {
-      await API.call(`/${serverId}/forward/stop`, 'POST', {}, '/api/server');
+      await API.call(`/${serverId}/forward`, 'DELETE', null, '/api/server');
       window.Toast?.show('Exposición detenida', 'info');
       const stopBtn = document.getElementById('btn-forward-stop');
       if (stopBtn) stopBtn.disabled = true;
       const statusEl = document.getElementById('forward-status');
       if (statusEl) statusEl.textContent = 'Inactivo';
-      const urlEl = document.getElementById('forward-url');
-      if (urlEl) urlEl.style.display = 'none';
     } catch (e) { window.Toast?.show('Error al detener exposición', 'error'); }
   });
 
@@ -112,7 +111,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const val = (input?.querySelector('input') ?? input)?.value?.trim();
     if (!val) { window.Toast?.show('Ingresa un hostname', 'warning'); return; }
     try {
-      await API.call(`/${serverId}/hostname`, 'POST', { hostname: val }, '/api/server');
+      await API.call(`/${serverId}/hostname`, 'PUT', { hostname: val }, '/api/server');
       window.Toast?.show('Hostname guardado', 'success');
       loadHostname();
     } catch (e) { window.Toast?.show('Error al guardar hostname', 'error'); }

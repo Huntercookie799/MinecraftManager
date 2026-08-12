@@ -14,6 +14,8 @@ model World {
   path      String
   isActive  Boolean  @default(false)
   isBackup  Boolean  @default(false)
+  allowMods Boolean  @default(true)
+  allowPlugins Boolean @default(true)
   thumbnail String?
   serverId  Int
   server    Server   @relation(fields: [serverId], references: [id], onDelete: Cascade)

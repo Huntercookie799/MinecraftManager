@@ -26,12 +26,14 @@
     "dotenv": "^17.4.2",
     "fastify": "^5.11.2",
     "jimp": "^1.6.1",
+    "pdfkit": "^0.19.1",
     "ws": "^8.21.3"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.8",
     "@types/bcrypt": "^6.0.0",
     "@types/node": "^26.2.0",
+    "@types/pdfkit": "^0.17.6",
     "@types/ws": "^8.18.1",
     "prisma": "^5.21.0",
     "tsx": "^4.23.11",

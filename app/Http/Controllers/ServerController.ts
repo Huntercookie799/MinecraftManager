@@ -3,6 +3,7 @@ import path from "node:path";
 import os from "node:os";
 import { createWriteStream } from "node:fs";
 import { pipeline } from "node:stream/promises";
+import AdmZip from "adm-zip";
 import { serverManager } from "../../Services/ServerManager";
 import { MinecraftServiceError } from "../../Services/MinecraftService";
 import { prisma } from "../../Models/prisma";
@@ -12,6 +13,7 @@ import { S3SyncService } from "../../Services/S3SyncService";
 import { jarManager } from "../../Services/JarManager";
 import { Jimp } from "jimp";
 import { addonSearchService } from "../../Services/AddonSearchService";
+import { modrinthService } from "../../Services/ModrinthService";
 import { portForwardService } from "../../Services/PortForwardService";
 import { minecraftProxyRouter } from "../../Services/MinecraftProxyRouter";
 import { getLanIp } from "../../Utils/network";
@@ -37,6 +39,7 @@ const DEFAULT_MC_VERSION = "1.21.8";
 
 interface FilesQuery {
   path?: string;
+  both?: string;
 }
 
 // ─── Helper: format bytes ─────────────────────────────────────────────────────
@@ -134,9 +137,7 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
     try {
       const serverId = parseInt(request.params.id, 10);
       const svc = serverManager.getServiceById(serverId);
-      if (!svc || svc.getStatus().status !== "ONLINE") {
-        return reply.code(400).send({ error: "El servidor no está ejecutándose o no se encontró." });
-      }
+      const isOnline = svc && svc.getStatus().status === "ONLINE" && !svc.isAdopted;
 
       const data = await request.file();
       if (!data) {
@@ -170,10 +171,22 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
       const json = await response.json();
       const { value, signature } = (json as any).data.texture;
 
-      // Inyectar comando de SkinRestorer
-      svc.sendCommand(`skin custom ${username} ${value} ${signature}`);
-
-      return { success: true, message: `Skin aplicada exitosamente a ${username}.` };
+      const command = `skin custom ${username} ${value} ${signature}`;
+      
+      if (isOnline) {
+        // Inyectar comando de SkinRestorer
+        svc.sendCommand(command);
+        return { success: true, message: `Skin aplicada exitosamente a ${username}.` };
+      } else {
+        await prisma.$executeRaw`
+          INSERT INTO serverpendingcommand (serverId, command, createdAt)
+          VALUES (${serverId}, ${command}, NOW())
+        `;
+        const pendingMsg = (svc && svc.isAdopted)
+          ? "El servidor es un proceso huérfano (sin consola). La skin se aplicará automáticamente cuando lo reinicies."
+          : "El servidor está apagado. La skin se aplicará automáticamente cuando inicie.";
+        return { success: true, message: pendingMsg };
+      }
     } catch (e: any) {
       console.error("[ServerController] Error subiendo skin:", e);
       return reply.code(500).send({ error: e.message });
@@ -191,14 +204,19 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
       await fs.mkdir(pluginsDir, { recursive: true });
       const destFile = path.join(pluginsDir, "SkinRestorer.jar");
 
-      // Buscar la última versión en GitHub
-      const res = await fetch("https://api.github.com/repos/SkinRestorer/SkinRestorer/releases/latest", {
+      // Buscar la última versión en GitHub. El repo es SkinsRestorer/SkinsRestorer
+      // (con "s"): "SkinRestorer/SkinRestorer" devuelve 404 y el install fallaba.
+      const res = await fetch("https://api.github.com/repos/SkinsRestorer/SkinsRestorer/releases/latest", {
         headers: { "User-Agent": "MinecraftManager/1.0" }
       });
-      if (!res.ok) throw new Error("No se pudo contactar con GitHub API");
+      if (!res.ok) throw new Error(`GitHub API respondió ${res.status} ${res.statusText}`);
       const json = await res.json();
-      const asset = (json as any).assets?.find((a: any) => a.name.endsWith(".jar"));
-      if (!asset) throw new Error("No se encontró el archivo .jar en GitHub");
+      // Preferir el jar del plugin Bukkit (SkinsRestorer.jar); ignorar los mods
+      // (Fabric/NeoForge) que también suben en el release.
+      const assets: any[] = (json as any).assets ?? [];
+      const asset = assets.find((a: any) => a.name === "SkinsRestorer.jar")
+        ?? assets.find((a: any) => a.name.endsWith(".jar") && !/\b(Mod|Fabric|NeoForge)-/i.test(a.name));
+      if (!asset) throw new Error("No se encontró el archivo .jar del plugin en GitHub");
 
       // Descargar el archivo
       const downloadRes = await fetch(asset.browser_download_url);
@@ -406,6 +424,7 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
           // Campo de texto del formulario
           if (part.fieldname === "name" && part.value) updateData.name = String(part.value);
           if (part.fieldname === "accentColor" && part.value) updateData.accentColor = String(part.value);
+          if (part.fieldname === "syncS3" && part.value !== undefined) updateData.syncWithS3 = String(part.value) === "true";
           if (part.fieldname === "motd" && part.value !== undefined) updateData.motd = String(part.value);
           if (part.fieldname === "removeIcon" && part.value) {
             if (server.mcIcon) {
@@ -642,6 +661,18 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
     await fs.mkdir(server.path, { recursive: true });
     await fs.writeFile(propsPath, newLines.join("\n"));
 
+    // online-mode es gestionado por el panel (columna DB): el formulario de
+    // ajustes lo escribe en el archivo, pero ensureServerProperties aplica
+    // SIEMPRE el valor de la DB al arrancar el servidor. Si no se sincroniza,
+    // el cambio se pierde en el reinicio. Aquí se persiste en la DB y se
+    // actualiza la config del servicio en memoria.
+    if (typeof updates["online-mode"] !== "undefined") {
+      const onlineMode = updates["online-mode"] === "true";
+      await prisma.server.update({ where: { id: server.id }, data: { onlineMode } });
+      const service = serverManager.getServiceById(server.id);
+      if (service) (service as any).config = { ...(service as any).config, onlineMode };
+    }
+
     return { success: true };
   });
 
@@ -756,6 +787,14 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
     }
     return withService(request.params.id, reply, async (service) => service.sendCommand(command));
   });
+  async function checkWorldAllowsAddon(serverId: number, isMod: boolean): Promise<boolean> {
+    const rawWorlds = await prisma.$queryRaw<any[]>`SELECT allowMods, allowPlugins FROM world WHERE serverId = ${serverId} AND isActive = 1 LIMIT 1`;
+    if (rawWorlds.length > 0) {
+      if (isMod) return !!rawWorlds[0].allowMods;
+      return !!rawWorlds[0].allowPlugins;
+    }
+    return true;
+  }
 
   // ── Addons (Mods / Plugins) ────────────────────────────────────────────────────────
   app.get<{ Params: { id: string } }>("/:id/addons", async (request, reply) => {
@@ -763,28 +802,40 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
     const server = await prisma.server.findUnique({ where: { id } });
     if (!server) return reply.code(404).send({ error: "Server not found" });
 
-    const isMod = server.softwareType === "fabric" || server.softwareType === "forge";
-    const folderName = isMod ? "mods" : "plugins";
-    const folderPath = path.join(server.path, folderName);
+    // Lista los .jar de las DOS carpetas (mods y plugins) con su tipo,
+    // para que el panel pueda distinguir visualmente mods de plugins.
+    const folders: Array<{ folder: string; type: "mod" | "plugin" }> = [
+      { folder: "mods", type: "mod" },
+      { folder: "plugins", type: "plugin" }
+    ];
 
-    try {
-      await fs.mkdir(folderPath, { recursive: true });
-      const entries = await fs.readdir(folderPath, { withFileTypes: true });
-      const items = await Promise.all(
-        entries.filter(e => e.isFile() && e.name.endsWith(".jar")).map(async (entry) => {
+    const items: Array<{ name: string; size: string; modified: string; type: "mod" | "plugin" }> = [];
+    for (const { folder, type } of folders) {
+      const folderPath = path.join(server.path, folder);
+      try {
+        await fs.mkdir(folderPath, { recursive: true });
+        const entries = await fs.readdir(folderPath, { withFileTypes: true });
+        for (const entry of entries) {
+          if (!entry.isFile() || !entry.name.endsWith(".jar")) continue;
           const fullPath = path.join(folderPath, entry.name);
           const stat = await fs.stat(fullPath);
-          return {
+          items.push({
             name: entry.name,
             size: formatBytes(stat.size),
-            modified: stat.mtime.toISOString()
-          };
-        })
-      );
-      return { folder: folderName, items };
-    } catch (e: any) {
-      return { folder: folderName, items: [] };
+            modified: stat.mtime.toISOString(),
+            type
+          });
+        }
+      } catch { /* carpeta inexistente → se omite */ }
     }
+
+    // Mods primero, luego plugins; alfabético dentro de cada tipo
+    items.sort((a, b) => {
+      if (a.type !== b.type) return a.type === "mod" ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+
+    return { items };
   });
 
   app.post<{ Params: { id: string } }>("/:id/addons", async (request, reply) => {
@@ -793,6 +844,10 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
     if (!server) return reply.code(404).send({ error: "Server not found" });
 
     const isMod = server.softwareType === "fabric" || server.softwareType === "forge";
+    if (!(await checkWorldAllowsAddon(id, isMod))) {
+      return reply.code(403).send({ error: `El mundo actual no permite el uso de ${isMod ? 'mods' : 'plugins'}.` });
+    }
+
     const folderName = isMod ? "mods" : "plugins";
     const folderPath = path.join(server.path, folderName);
     await fs.mkdir(folderPath, { recursive: true });
@@ -811,13 +866,19 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
     return { success: true, message: "Addon subido correctamente" };
   });
 
-  app.delete<{ Params: { id: string, filename: string } }>("/:id/addons/:filename", async (request, reply) => {
+  app.delete<{ Params: { id: string, filename: string }, Querystring: { type?: string } }>("/:id/addons/:filename", async (request, reply) => {
     const id = parseInt(request.params.id, 10);
     const filename = request.params.filename;
     const server = await prisma.server.findUnique({ where: { id } });
     if (!server) return reply.code(404).send({ error: "Server not found" });
 
-    const isMod = server.softwareType === "fabric" || server.softwareType === "forge";
+    // El tipo ('mod' | 'plugin') decide la carpeta; por defecto según el software
+    const type = request.query.type === "mod" ? "mod" : "plugin";
+    const isMod = type === "mod";
+    if (!(await checkWorldAllowsAddon(id, isMod))) {
+      return reply.code(403).send({ error: `El mundo actual no permite el uso de ${isMod ? 'mods' : 'plugins'}.` });
+    }
+
     const folderName = isMod ? "mods" : "plugins";
     const filePath = path.join(server.path, folderName, filename);
 
@@ -834,14 +895,46 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
   });
 
   // ── Addons Search ────────────────────────────────────────────────────────
-  app.get<{ Params: { id: string }, Querystring: { q: string, version?: string, loader?: string, limit?: string } }>("/:id/addons/search", async (request, reply) => {
-    const { q, version, loader, limit } = request.query;
+  app.get<{ Params: { id: string }, Querystring: { q: string, version?: string, loader?: string, limit?: string, type?: string, category?: string } }>("/:id/addons/search", async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const server = await prisma.server.findUnique({ where: { id } });
+    if (!server) return reply.code(404).send({ error: "Server not found" });
+
+    const { q, limit, type, category } = request.query;
     if (!q) return reply.code(400).send({ error: "Falta el término de búsqueda 'q'" });
     const limitNum = limit ? parseInt(limit, 10) : 20;
+
+    // Compatibilidad: si el frontend no pasa versión/loader, se usan las del servidor
+    // (purpur ≈ paper para la búsqueda, igual que en la instalación).
+    let version = request.query.version;
+    let loader = request.query.loader;
+    if (!version && server.version) version = server.version;
+    if (!loader && server.softwareType) {
+      loader = server.softwareType === "purpur" ? "paper" : server.softwareType;
+    }
+
+    try {
+      const results = await addonSearchService.search(q, version, loader, limitNum, type, category);
+      return { success: true, items: results };
+    } catch (e: any) {
+      return reply.code(500).send({ error: e.message });
+    }
+  });
+
+  // ── Addon Details ────────────────────────────────────────────────────────
+  app.get<{ Params: { id: string, source: "modrinth" | "curseforge", addonId: string } }>("/:id/addons/details/:source/:addonId", async (request, reply) => {
+    const { source, addonId } = request.params;
+    
+    if (source !== "modrinth" && source !== "curseforge") {
+      return reply.code(400).send({ error: "Invalid source" });
+    }
     
     try {
-      const results = await addonSearchService.search(q, version, loader, limitNum);
-      return { success: true, items: results };
+      const details = await addonSearchService.getProjectDetails(source, addonId);
+      if (!details) {
+        return reply.code(404).send({ error: "Project not found or API error" });
+      }
+      return { success: true, project: details };
     } catch (e: any) {
       return reply.code(500).send({ error: e.message });
     }
@@ -852,6 +945,11 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
     const server = await prisma.server.findUnique({ where: { id } });
     if (!server) return reply.code(404).send({ error: "Server not found" });
 
+    const isMod = server.softwareType === "fabric" || server.softwareType === "forge";
+    if (!(await checkWorldAllowsAddon(id, isMod))) {
+      return reply.code(403).send({ error: `El mundo actual no permite el uso de ${isMod ? 'mods' : 'plugins'}.` });
+    }
+
     const { source, projectId } = request.body;
     if (!source || !projectId) return reply.code(400).send({ error: "Falta source o projectId" });
 
@@ -860,7 +958,7 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
     if (loader === "purpur") searchLoader = "paper"; // Equivalencia
 
     try {
-      const versions = await addonSearchService.getVersions(source, projectId, server.version, searchLoader);
+      const versions = await addonSearchService.getAddonFiles(source, projectId, server.version, searchLoader);
       if (!versions || versions.length === 0) {
         return reply.code(404).send({ error: "No hay versiones compatibles para la versión de este servidor." });
       }
@@ -880,6 +978,50 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
 
       return { success: true, message: `Instalado ${bestVersion.filename}` };
     } catch (e: any) {
+      return reply.code(500).send({ error: e.message });
+    }
+  });
+
+  // ── Modpacks ──────────────────────────────────────────────────────────────
+  // GET /:id/modpacks/recommended → modpacks más descargados compatibles con la
+  // versión del servidor (Modrinth + CurseForge si hay key)
+  app.get<{ Params: { id: string } }>("/:id/modpacks/recommended", async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const server = await prisma.server.findUnique({ where: { id } });
+    if (!server) return reply.code(404).send({ error: "Server not found" });
+    try {
+      const items = await addonSearchService.getRecommendedModpacks(12, server.version ?? undefined);
+      return { success: true, items };
+    } catch (e: any) {
+      return reply.code(500).send({ error: e.message });
+    }
+  });
+
+  // POST /:id/modpacks/install → instala un modpack (Modrinth .mrpack o
+  // CurseForge zip con manifest.json) en mods/ y copia los overrides.
+  app.post<{ Params: { id: string }, Body: { source: string, projectId: string } }>("/:id/modpacks/install", async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const server = await prisma.server.findUnique({ where: { id } });
+    if (!server) return reply.code(404).send({ error: "Server not found" });
+
+    const { source, projectId } = request.body || {};
+    if (!source || !projectId) return reply.code(400).send({ error: "Falta source o projectId" });
+
+    if (!(await checkWorldAllowsAddon(id, true))) {
+      return reply.code(403).send({ error: "El mundo actual no permite el uso de mods." });
+    }
+
+    const isModServer = ["fabric", "forge", "neoforge", "quilt"].includes(server.softwareType ?? "");
+
+    try {
+      const res = await addonSearchService.installModpack(source, projectId, server.version ?? undefined, server.path);
+      const warning = isModServer
+        ? ""
+        : `Ojo: ${server.name} usa ${server.softwareType ?? "otro software"} y no carga mods. Instalá este modpack en un servidor Fabric/Forge/NeoForge para poder jugarlo.`;
+      const msg = `Modpack "${res.name}" instalado: ${res.installed} mods en mods/` + (res.failed ? `, ${res.failed} fallaron` : "") + "." + (warning ? " " + warning : "");
+      return { success: true, message: msg };
+    } catch (e: any) {
+      app.log.error(e);
       return reply.code(500).send({ error: e.message });
     }
   });
@@ -958,6 +1100,74 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
         };
       }
       throw e;
+    }
+  });
+
+  // ── Descargar carpeta como .zip ────────────────────────────────────────────
+  // GET /:id/files/download?path=<rel>  → zipea una carpeta
+  // GET /:id/files/download?both=1      → zipea mods + plugins en un solo zip
+  // Sin ?path ni ?both: carpeta de addons según el software (mods para
+  // Fabric/Forge, plugins para el resto) — usado por "Descargar plugins".
+  app.get<{ Params: { id: string }, Querystring: FilesQuery }>("/:id/files/download", async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const server = await prisma.server.findUnique({ where: { id } });
+    if (!server) return reply.code(404).send({ error: "Server not found" });
+
+    const serverRoot = server.path;
+    const both = request.query.both === "1" || request.query.both === "true";
+    const requestedRelPath = request.query.path?.trim() || "";
+
+    try {
+      const zip = new AdmZip();
+
+      if (both) {
+        // Un solo zip con las dos carpetas como directorios raíz
+        let added = 0;
+        for (const folder of ["mods", "plugins"]) {
+          const folderPath = path.join(serverRoot, folder);
+          try {
+            await fs.access(folderPath);
+            zip.addLocalFolder(folderPath, folder);
+            added++;
+          } catch {}
+        }
+        if (added === 0) {
+          return reply.code(404).send({ error: "No hay carpetas mods ni plugins en este servidor." });
+        }
+        const buffer = zip.toBuffer();
+        reply.header("Content-Disposition", 'attachment; filename="mods_y_plugins.zip"');
+        reply.type("application/zip");
+        return reply.send(buffer);
+      }
+
+      let targetFolder = requestedRelPath;
+      if (!targetFolder) {
+        const isMod = server.softwareType === "fabric" || server.softwareType === "forge";
+        targetFolder = isMod ? "mods" : "plugins";
+      }
+
+      const resolvedPath = path.resolve(serverRoot, targetFolder);
+      if (!resolvedPath.startsWith(path.resolve(serverRoot))) {
+        return reply.code(403).send({ error: "Access denied: path traversal detected" });
+      }
+
+      const stat = await fs.stat(resolvedPath);
+      if (!stat.isDirectory()) {
+        return reply.code(400).send({ error: "La ruta no es un directorio" });
+      }
+
+      const zipName = (path.basename(targetFolder) || targetFolder) + ".zip";
+      zip.addLocalFolder(resolvedPath, path.basename(targetFolder) || targetFolder);
+      const buffer = zip.toBuffer();
+      reply.header("Content-Disposition", `attachment; filename="${zipName}"`);
+      reply.type("application/zip");
+      return reply.send(buffer);
+    } catch (e: any) {
+      if (e.code === "ENOENT") {
+        return reply.code(404).send({ error: "La carpeta no existe en este servidor." });
+      }
+      app.log.error(e);
+      return reply.code(500).send({ error: "Failed to create ZIP file" });
     }
   });
 }

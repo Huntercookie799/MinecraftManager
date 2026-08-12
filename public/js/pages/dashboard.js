@@ -157,13 +157,40 @@ $fallbackHosts = @('${hostnames.join("','")}')
 
 $ip = $fallbackIp
 $hosts = $fallbackHosts
+
+# 1) Descubrir el panel por broadcast UDP en la LAN. Funciona aunque la IP del
+#    servidor haya cambiado de red: el panel responde con su IP actual.
+$discovered = $false
 try {
-  $r = Invoke-RestMethod -Uri "$panelUrl/api/server/hostnames/public" -TimeoutSec 3
-  if ($r.lanIp) { $ip = $r.lanIp }
-  if ($r.hostnames -and $r.hostnames.Count -gt 0) { $hosts = @($r.hostnames) }
-  Write-Host "[INFO] IP desde el panel: $ip"
+  $udp = New-Object System.Net.Sockets.UdpClient
+  $udp.Client.ReceiveTimeout = 2000
+  $udp.EnableBroadcast = $true
+  $magic = [Text.Encoding]::UTF8.GetBytes('MCSYNC_DISCOVER')
+  $udp.Send($magic, $magic.Length, '255.255.255.255', 45678) | Out-Null
+  $ep = New-Object System.Net.IPEndPoint([Net.IPAddress]::Any, 0)
+  $respBytes = $udp.Receive([ref]$ep)
+  $disc = [Text.Encoding]::UTF8.GetString($respBytes) | ConvertFrom-Json
+  if ($disc.lanIp) {
+    $ip = $disc.lanIp
+    if ($disc.hostnames -and $disc.hostnames.Count -gt 0) { $hosts = @($disc.hostnames) }
+    Write-Host "[INFO] IP descubierta por broadcast UDP: $ip"
+    $discovered = $true
+  }
+  $udp.Close()
 } catch {
-  Write-Host "[WARN] Panel no accesible; usando IP embebida: $ip"
+  Write-Host "[WARN] Sin respuesta por broadcast UDP; probando por HTTP..."
+}
+
+# 2) Respaldo: consultar el panel por HTTP (IP embebida al descargar el script)
+if (-not $discovered) {
+  try {
+    $r = Invoke-RestMethod -Uri "$panelUrl/api/server/hostnames/public" -TimeoutSec 3
+    if ($r.lanIp) { $ip = $r.lanIp }
+    if ($r.hostnames -and $r.hostnames.Count -gt 0) { $hosts = @($r.hostnames) }
+    Write-Host "[INFO] IP desde el panel: $ip"
+  } catch {
+    Write-Host "[WARN] Panel no accesible; usando IP embebida: $ip"
+  }
 }
 
 $hostsFile = "$env:SystemRoot\\System32\\drivers\\etc\\hosts"

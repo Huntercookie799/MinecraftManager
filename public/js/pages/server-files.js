@@ -93,7 +93,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (selectedFiles.size === 0) return;
     if (!confirm(`¿Eliminar los ${selectedFiles.size} archivos seleccionados?`)) return;
     
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('mm_token');
     const promises = Array.from(selectedFiles).map(file => {
       return fetch(`/api/server/${serverId}/files`, {
         method: 'DELETE',
@@ -214,7 +214,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       btn.addEventListener('click', async () => {
         const file = btn.dataset.file;
         if (!confirm(`¿Eliminar "${file}" permanentemente?`)) return;
-        const token = localStorage.getItem('token');
+        const token = localStorage.getItem('mm_token');
         try {
           const res = await fetch(`/api/server/${serverId}/files`, {
             method: 'DELETE',
@@ -366,7 +366,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     const filename = path.split('/').pop();
     window.Toast?.show(`Descargando ${filename}...`, 'info');
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('mm_token');
       // Usamos el endpoint de /download para R2 también (si está implementado), pero el backend actual:
       // /api/server/:id/files/download?path=...
       let url = `/api/server/${serverId}/files/download?path=${encodeURIComponent(path)}`;
