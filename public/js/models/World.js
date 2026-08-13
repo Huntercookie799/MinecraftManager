@@ -61,4 +61,26 @@ export class WorldModel {
   static getDownloadUrl(serverId, worldId) {
     return `/api/server/${serverId}/worlds/${worldId}/export`;
   }
+
+  static async upload(serverId, file, name = null) {
+    const formData = new FormData();
+    formData.append('file', file);
+    if (name) {
+      formData.append('name', name);
+    }
+    const token = localStorage.getItem('mm_token');
+    const res = await fetch(`/api/server/${serverId}/worlds/upload`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: formData
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      window.Toast?.show(data.error || 'Error al subir el mundo', 'error');
+      throw new Error(data.error || 'Error al subir');
+    }
+    return data;
+  }
 }

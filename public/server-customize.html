@@ -192,6 +192,22 @@
 
     </div>
 
+    <!-- Card: Jugadores y Skins -->
+    <div class="card" style="margin-top:20px;">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+        <h3 style="margin:0;"><i data-lucide="users" style="width:18px;height:18px;vertical-align:middle;margin-right:6px;"></i>Jugadores y Skins</h3>
+        <ui-button variant="secondary" size="sm" id="btn-refresh-players" style="width:auto;"><i data-lucide="refresh-cw" style="width:14px;height:14px;"></i> Actualizar</ui-button>
+      </div>
+      
+      <p style="color:var(--text-dim);font-size:0.85rem;margin-bottom:14px;line-height:1.5;">
+        Haz clic en un jugador para preparar el formulario y cambiar su skin (requiere SkinRestorer).
+      </p>
+
+      <div id="players-skins-grid" style="display:grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 12px; max-height: 250px; overflow-y: auto;">
+         <div style="color:var(--text-dim);font-size:0.85rem;">Cargando jugadores...</div>
+      </div>
+    </div>
+
     <!-- Zona de Peligro -->
     <div class="card" style="margin-top:20px;border-color:rgba(220,50,50,0.3);">
       <h3 style="color:var(--text-danger);"><i data-lucide="alert-triangle" style="width:18px;height:18px;vertical-align:middle;margin-right:6px;"></i>Zona de Peligro</h3>

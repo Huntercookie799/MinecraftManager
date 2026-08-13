@@ -78,7 +78,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     const lanChip = DOM.get('lan-ip-chip');
     const hint = DOM.get('hostnames-hint');
     const hostsContent = DOM.get('hosts-file-content');
-    if (!list) return;
 
     const data = await API.call('/hostnames');
     if (!data) return;

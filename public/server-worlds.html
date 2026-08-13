@@ -66,9 +66,15 @@
             <i data-lucide="globe" style="width:18px;height:18px;vertical-align:middle;margin-right:6px;"></i>
             Gestión de Mundos
           </h3>
-          <ui-button variant="success" id="btn-show-new-world" style="width:auto;">
-            <i data-lucide="plus" style="width:15px;height:15px;"></i> Nuevo Mundo
-          </ui-button>
+          <div style="display:flex; gap:10px;">
+            <input type="file" id="upload-world-input" accept=".zip" style="display:none;">
+            <ui-button variant="secondary" id="btn-upload-world" style="width:auto;">
+              <i data-lucide="upload" style="width:15px;height:15px;"></i> Subir Mundo (.zip)
+            </ui-button>
+            <ui-button variant="success" id="btn-show-new-world" style="width:auto;">
+              <i data-lucide="plus" style="width:15px;height:15px;"></i> Nuevo Mundo
+            </ui-button>
+          </div>
         </div>
 
         <!-- Estado vacío / skeleton -->

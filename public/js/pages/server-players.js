@@ -26,6 +26,8 @@ function getDimensionConfig(dim) {
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 let skinViewer = null;
+const playerCache = {}; // Cache para guardar { skin, avatar } por nombre de jugador
+
 
 // Exponer la función para que se pueda llamar desde los botones HTML (onclick)
 window.showPlayerDetails = function(name, x, y, z, dimension, playtime, isOnline, lastSeen) {
@@ -36,7 +38,11 @@ window.showPlayerDetails = function(name, x, y, z, dimension, playtime, isOnline
   DOM.get('detail-status').textContent = isOnline ? '🟢 En Línea' : '🔴 Offline';
   DOM.get('detail-status').style.color = isOnline ? 'var(--color-success)' : 'var(--text-dim)';
   
-  DOM.get('detail-avatar').src = `https://mc-heads.net/avatar/${name}/60`;
+  const cache = playerCache[name] || {};
+  const avatarUrl = cache.avatar || `https://mc-heads.net/avatar/${name}/60`;
+  const skinUrl = cache.skin || `https://mc-heads.net/skin/${name}`;
+  
+  DOM.get('detail-avatar').src = avatarUrl;
   DOM.get('detail-playtime').textContent = formatPlaytime(playtime);
   
   const coordsEl = DOM.get('detail-coords');
@@ -65,7 +71,7 @@ window.showPlayerDetails = function(name, x, y, z, dimension, playtime, isOnline
       canvas: document.createElement('canvas'),
       width: 150,
       height: 250,
-      skin: `https://mc-heads.net/skin/${name}`
+      skin: skinUrl
     });
     DOM.get('detail-skin-viewer').appendChild(skinViewer.canvas);
     
@@ -129,9 +135,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         ? `${player.x}, ${player.y}, ${player.z}`
         : 'Desconocido';
       const playtime = formatPlaytime(player.playtimeSeconds);
-      const skinUrl = `https://mc-heads.net/avatar/${player.name}/40`;
+      
+      const cache = playerCache[player.name] || {};
+      const avatarUrl = cache.avatar || `https://mc-heads.net/avatar/${player.name}/40`;
 
       if (existing) {
+        const avatarImg = existing.querySelector('.player-avatar img');
+        if (avatarImg && avatarImg.getAttribute('src') !== avatarUrl) {
+          avatarImg.setAttribute('src', avatarUrl);
+        }
         const dimEl = existing.querySelector('.player-dim');
         if (dimEl) {
           dimEl.className = `player-dim ${dimCfg.cls}`;
@@ -147,7 +159,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         row.dataset.name = player.name;
         row.innerHTML = `
           <div class="player-avatar">
-            <img src="${skinUrl}" alt="${player.name}" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2240%22 height=%2240%22><rect width=%2240%22 height=%2240%22 fill=%22%23475569%22 rx=%228%22/><text x=%2250%25%22 y=%2255%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2218%22>👤</text></svg>'">
+            <img src="${avatarUrl}" alt="${player.name}" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2240%22 height=%2240%22><rect width=%2240%22 height=%2240%22 fill=%22%23475569%22 rx=%228%22/><text x=%2250%25%22 y=%2255%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2218%22>👤</text></svg>'">
             <span class="player-online-dot"></span>
           </div>
           <div class="player-info">
@@ -176,6 +188,9 @@ document.addEventListener('DOMContentLoaded', async () => {
       // El endpoint está protegido: API.call agrega el token automáticamente.
       const data = await API.call(`/${serverId}/players`, 'GET', null, '/api/server');
       if (data && data.success) {
+        data.players.forEach(p => {
+          playerCache[p.name] = { skin: p.skin, avatar: p.avatar };
+        });
         renderRegistry(data.players);
       }
     } catch (e) {
@@ -202,12 +217,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     players.forEach(player => {
       const row = document.createElement('div');
       row.className = 'player-row';
-      const skinUrl = `https://mc-heads.net/avatar/${player.name}/40`;
+      const cache = playerCache[player.name] || {};
+      const avatarUrl = cache.avatar || `https://mc-heads.net/avatar/${player.name}/40`;
       const playtime = formatPlaytime(player.playtimeSeconds);
       
       row.innerHTML = `
         <div class="player-avatar">
-          <img src="${skinUrl}" alt="${player.name}" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2240%22 height=%2240%22><rect width=%2240%22 height=%2240%22 fill=%22%23475569%22 rx=%228%22/><text x=%2250%25%22 y=%2255%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2218%22>👤</text></svg>'">
+          <img src="${avatarUrl}" alt="${player.name}" onerror="this.src='data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2240%22 height=%2240%22><rect width=%2240%22 height=%2240%22 fill=%22%23475569%22 rx=%228%22/><text x=%2250%25%22 y=%2255%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 font-size=%2218%22>👤</text></svg>'">
         </div>
         <div class="player-info">
           <span class="player-name">${player.name}</span>

@@ -20,6 +20,38 @@ document.addEventListener('DOMContentLoaded', async () => {
   DOM.on('btn-show-new-world', 'click', () => DOM.show(modalNew));
   DOM.on('btn-cancel-new-world', 'click', () => DOM.hide(modalNew));
 
+  // ── Subir Mundo ──────────────────────────────────────────────────────────
+  const btnUpload = DOM.get('btn-upload-world');
+  const inputUpload = DOM.get('upload-world-input');
+  if (btnUpload && inputUpload) {
+    btnUpload.addEventListener('click', () => inputUpload.click());
+    inputUpload.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      
+      const btnIcon = btnUpload.innerHTML;
+      btnUpload.disabled = true;
+      btnUpload.innerHTML = '<div class="loader-spinner" style="width:14px;height:14px;border-width:2px;display:inline-block;vertical-align:middle;margin-right:6px;"></div> Subiendo...';
+      window.Toast?.show(`Subiendo y extrayendo mundo "${file.name}"... puede tardar.`, 'info');
+      
+      try {
+        const res = await WorldModel.upload(serverId, file);
+        if (res?.compatibilityWarning) {
+          window.Toast?.show(res.compatibilityWarning, 'warning');
+        } else {
+          window.Toast?.show('Mundo subido exitosamente', 'success');
+        }
+        loadWorlds();
+      } catch (err) {
+        console.error(err);
+      } finally {
+        btnUpload.disabled = false;
+        btnUpload.innerHTML = btnIcon;
+        inputUpload.value = '';
+      }
+    });
+  }
+
   DOM.on('btn-create-world', 'click', async () => {
     const nameEl = document.getElementById('new-world-name');
     const name = (nameEl?.querySelector('input') ?? nameEl)?.value?.trim();
@@ -353,7 +385,10 @@ document.addEventListener('DOMContentLoaded', async () => {
             ${isActive
               ? '<span style="display:inline-flex;align-items:center;justify-content:center;width:8px;height:8px;border-radius:50%;background:var(--color-success);flex-shrink:0;"></span>'
               : '<span style="display:inline-flex;align-items:center;justify-content:center;width:8px;height:8px;border-radius:50%;background:var(--border-color);flex-shrink:0;"></span>'}
-            <strong style="font-size:0.9rem;">${w.name}</strong>
+            <div style="display:flex; flex-direction:column;">
+              <strong style="font-size:0.9rem;">${w.name}</strong>
+              ${w.compatibilityWarning ? `<span style="font-size:0.75rem;color:var(--text-danger);margin-top:2px;" title="${w.compatibilityWarning}"><i data-lucide="alert-triangle" style="width:12px;height:12px;display:inline-block;vertical-align:middle;margin-right:2px;"></i> Incompatible</span>` : ''}
+            </div>
           </div>
         </td>
         <td><code style="font-size:0.8rem;color:var(--text-dim);">${folder}</code></td>

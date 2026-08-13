@@ -63,6 +63,25 @@ async function countWorldContents(base: string) {
   return { mods, plugins, configs, defaultconfigs, resourcepacks };
 }
 
+async function getFolderSize(dir: string): Promise<number> {
+  let totalSize = 0;
+  try {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        totalSize += await getFolderSize(fullPath);
+      } else {
+        const stats = await fs.stat(fullPath).catch(() => null);
+        if (stats) totalSize += stats.size;
+      }
+    }
+  } catch {
+    // Ignorar si no existe
+  }
+  return totalSize;
+}
+
 // ─── Helper: contenido del tutorial/manual de un mundo ───────────────────────
 
 interface TutorialStep {
@@ -142,6 +161,40 @@ async function buildTutorialContent(server: any, world: any, stats: any): Promis
   };
 }
 
+// Ensure extracted ZIPs have a valid 'world' folder structure
+async function sanitizeExtractedWorld(worldPath: string) {
+  try {
+    const items = await fs.readdir(worldPath);
+    if (items.includes("world")) return;
+
+    if (items.includes("level.dat")) {
+      const worldDir = path.join(worldPath, "world");
+      await fs.mkdir(worldDir);
+      const exclusions = ["mods", "plugins", "config", "defaultconfigs", "resourcepacks"];
+      for (const item of items) {
+        if (!exclusions.includes(item) && item !== "world") {
+          await fs.rename(path.join(worldPath, item), path.join(worldDir, item));
+        }
+      }
+      return;
+    }
+
+    for (const item of items) {
+      const itemPath = path.join(worldPath, item);
+      const itemStat = await fs.stat(itemPath);
+      if (itemStat.isDirectory()) {
+        const innerItems = await fs.readdir(itemPath);
+        if (innerItems.includes("level.dat")) {
+          await fs.rename(itemPath, path.join(worldPath, "world"));
+          return;
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Error sanitizing world:", e);
+  }
+}
+
 export async function registerWorldsRoutes(app: FastifyInstance): Promise<void> {
   const thumbnailsDir = path.join(__dirname, "..", "..", "..", "public", "thumbnails");
   await fs.mkdir(thumbnailsDir, { recursive: true }).catch(() => {});
@@ -188,10 +241,53 @@ export async function registerWorldsRoutes(app: FastifyInstance): Promise<void> 
     const allowModsMap = new Map(rawWorlds.map(w => [w.id, !!w.allowMods]));
     const allowPluginsMap = new Map(rawWorlds.map(w => [w.id, !!w.allowPlugins]));
     
-    const mappedWorlds = worlds.map(w => ({ 
-      ...w, 
-      allowMods: allowModsMap.has(w.id) ? allowModsMap.get(w.id) : true,
-      allowPlugins: allowPluginsMap.has(w.id) ? allowPluginsMap.get(w.id) : true
+    const server = await getServerContext(request.params.serverId, reply);
+    if (!server) return;
+
+    const mappedWorlds = await Promise.all(worlds.map(async w => {
+      let sizeBytes = 0;
+      let compatibilityWarning = null;
+      if (server && server.path) {
+        const base = w.isActive ? server.path : path.join(server.path, "worlds_backup", w.path);
+        const foldersToSum = ["world", "world_nether", "world_the_end", "mods", "plugins", "resourcepacks", "config", "defaultconfigs"];
+        for (const folder of foldersToSum) {
+          sizeBytes += await getFolderSize(path.join(base, folder));
+        }
+
+        try {
+          const levelDatPath = path.join(base, "world", "level.dat");
+          const buf = await fs.readFile(levelDatPath);
+          const nbt = require("prismarine-nbt");
+          const { parsed } = await nbt.parse(buf);
+          const worldVersion = parsed.value?.Data?.value?.Version?.value?.Name?.value;
+          
+          if (worldVersion) {
+            const serverMajor = server.version?.split('.').slice(0,2).join('.') || "1.21";
+            const worldMajor = worldVersion.split('.').slice(0,2).join('.');
+            if (worldMajor && worldMajor !== serverMajor) {
+              let hasCustomDatapacks = false;
+              try {
+                const entries = await fs.readdir(path.join(base, "world", "datapacks"));
+                hasCustomDatapacks = entries.some(e => e !== "bukkit");
+              } catch (e) {}
+
+              if (hasCustomDatapacks) {
+                compatibilityWarning = `El mundo es v${worldVersion} con Datapacks, puede ser INCOMPATIBLE con tu servidor (${server.version}).`;
+              }
+            }
+          }
+        } catch (e) {
+          // file missing or invalid
+        }
+      }
+
+      return { 
+        ...w, 
+        allowMods: allowModsMap.has(w.id) ? allowModsMap.get(w.id) : true,
+        allowPlugins: allowPluginsMap.has(w.id) ? allowPluginsMap.get(w.id) : true,
+        sizeBytes,
+        compatibilityWarning
+      };
     }));
     return { worlds: mappedWorlds };
   });
@@ -343,11 +439,36 @@ export async function registerWorldsRoutes(app: FastifyInstance): Promise<void> 
       const worldPath = path.join(worldsBackupDir, name);
       zip.extractAllTo(worldPath, true);
       
+      await sanitizeExtractedWorld(worldPath);
+
+      let compatibilityWarning = null;
+      try {
+        const levelDatPath = path.join(worldPath, "world", "level.dat");
+        const buf = await fs.readFile(levelDatPath);
+        const nbt = require("prismarine-nbt");
+        const { parsed } = await nbt.parse(buf);
+        const worldVersion = parsed.value?.Data?.value?.Version?.value?.Name?.value;
+        if (worldVersion) {
+          const serverMajor = server.version?.split('.').slice(0,2).join('.') || "1.21";
+          const worldMajor = worldVersion.split('.').slice(0,2).join('.');
+          if (worldMajor && worldMajor !== serverMajor) {
+            let hasCustomDatapacks = false;
+            try {
+              const entries = await fs.readdir(path.join(worldPath, "world", "datapacks"));
+              hasCustomDatapacks = entries.some(e => e !== "bukkit");
+            } catch (e) {}
+            if (hasCustomDatapacks) {
+              compatibilityWarning = `El mundo es v${worldVersion} con Datapacks, puede ser INCOMPATIBLE con tu servidor (${server.version}).`;
+            }
+          }
+        }
+      } catch (e) {}
+
       const world = await prisma.world.create({
         data: { name, path: name, isActive: false, serverId: server.id }
       });
 
-      return { success: true, world };
+      return { success: true, world, compatibilityWarning };
     } catch (err) {
       app.log.error(err);
       return reply.code(500).send({ error: "Failed to extract ZIP" });

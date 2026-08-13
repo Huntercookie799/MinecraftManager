@@ -26,8 +26,11 @@ interface PlayerState {
   names: string[];
 }
 
-import { S3SyncService } from "./S3SyncService";
 import { jarManager } from "./JarManager";
+import { S3SyncService } from "./S3SyncService";
+import { Rcon } from "rcon-client";
+import crypto from "crypto";
+import fsSync from "fs";
 
 export interface MinecraftServerConfig {
   id: number;
@@ -48,7 +51,9 @@ type ServiceErrorCode =
   | "EULA_NOT_ACCEPTED"
   | "MINECRAFT_NOT_RUNNING"
   | "PAPER_JAR_MISSING"
-  | "JAR_DOWNLOAD_FAILED";
+  | "JAR_DOWNLOAD_FAILED"
+  | "SERVER_NOT_ONLINE"
+  | "PROCESS_ORPHANED";
 
 export class MinecraftServiceError extends Error {
   constructor(
@@ -77,11 +82,15 @@ export class MinecraftService extends EventEmitter {
     names: []
   };
   private world = "world";
+  private syncedSkins: Set<string> = new Set();
   private worldTime: number | null = null;
   private pollingTimer?: NodeJS.Timeout;
 
   // Track per-player join times, total playtime (seconds), dimension and coords
   private playerSessions: Record<string, PlayerSession> = {};
+  
+  // Custom death messages cache
+  private deathMessages: Array<{dimension: string, message: string, playerName?: string | null}> = [];
 
   // Used to correlate pending data queries
   private pendingDataQuery: string | null = null;
@@ -97,6 +106,7 @@ export class MinecraftService extends EventEmitter {
   private adopted = false;
   private adoptedPid?: number;
   private tailTimer?: NodeJS.Timeout;
+  private s3BackupTimer?: NodeJS.Timeout;
   private tailOffset = 0;
   private adoptionChecked = false;
   private refreshTried = new Set<string>();
@@ -114,7 +124,17 @@ export class MinecraftService extends EventEmitter {
     return this.adopted;
   }
 
+  public async loadDeathMessages() {
+    try {
+      const messages = await prisma.$queryRaw<any[]>`SELECT * FROM serverdeathmessage WHERE serverId = ${this.config.id}`;
+      this.deathMessages = messages || [];
+    } catch (e: any) {
+      console.error("[MinecraftService] Error loading death messages:", e);
+    }
+  }
+
   async start(): Promise<ServerStatus> {
+    this.loadDeathMessages();
     if (this.child && !this.child.killed) {
       return this.getStatus();
     }
@@ -125,18 +145,10 @@ export class MinecraftService extends EventEmitter {
     if (this.adopted) {
       this.adopted = false;
       this.stopFileTail();
+      this.stopS3BackupTimer();
     }
 
     await this.ensureRuntimeIsReady();
-
-    // S3: Restaurar desde el backup/template ANTES de fijar server.properties.
-    if (this.config.syncWithS3 !== false) {
-      try {
-        await this.s3Sync.downloadAndUnzip(this.config.directory, this.config.id, (msg) => this.addLog("system", msg));
-      } catch (e: any) {
-        this.addLog("system", `Failed to sync from S3: ${e.message}`);
-      }
-    }
 
     await this.ensureServerProperties();
     await this.ensureServerIcon();
@@ -211,6 +223,8 @@ export class MinecraftService extends EventEmitter {
       if (!expectedStop) {
         this.lastError = `Minecraft exited unexpectedly with code ${code ?? "null"}.`;
       }
+      
+      this.stopS3BackupTimer();
 
       // S3: Crear un backup tras apagarse (esperado o inesperado)
       if (this.config.syncWithS3 !== false) {
@@ -233,6 +247,7 @@ export class MinecraftService extends EventEmitter {
       }
       this.adopted = false;
       this.stopFileTail();
+      this.stopS3BackupTimer();
       this.startedAt = undefined;
       this.state = "OFFLINE";
       await fs.rm(this.pidPath, { force: true }).catch(() => {});
@@ -269,17 +284,28 @@ export class MinecraftService extends EventEmitter {
     await this.stop();
     return this.start();
   }
-
   sendCommand(rawCommand: string): { accepted: true; command: string } {
-    if (this.adopted) {
+    if (this.state !== "ONLINE" && this.state !== "STARTING") {
       throw new MinecraftServiceError(
-        "Este servidor es un proceso huérfano (sobrevivió a un reinicio del panel). Reinícialo para recuperar la consola.",
-        409,
-        "COMMAND_REJECTED"
+        `Cannot send command, server is in state ${this.state}`,
+        400,
+        "SERVER_NOT_ONLINE"
       );
     }
-    if (!this.child || this.child.killed || this.state === "OFFLINE") {
-      throw new MinecraftServiceError("Minecraft is not running.", 409, "MINECRAFT_NOT_RUNNING");
+    
+    // Check if we are adopted and don't have RCON enabled (very old orphaned processes)
+    if (this.adopted) {
+      const propPath = path.join(this.config.directory, "server.properties");
+      if (fsSync.existsSync(propPath)) {
+        const content = fsSync.readFileSync(propPath, "utf8").toString();
+        if (!content.includes("enable-rcon=true")) {
+          throw new MinecraftServiceError(
+            "Este servidor es un proceso huérfano (sobrevivió a un reinicio del panel). Reinícialo para recuperar la consola.",
+            400,
+            "PROCESS_ORPHANED"
+          );
+        }
+      }
     }
 
     const command = this.normalizeCommand(rawCommand);
@@ -340,6 +366,7 @@ export class MinecraftService extends EventEmitter {
       if (this.isPidAlive(this.adoptedPid)) await this.killPid(this.adoptedPid!);
       this.adopted = false;
       this.stopFileTail();
+      this.stopS3BackupTimer();
       await fs.rm(this.pidPath, { force: true }).catch(() => {});
       return;
     }
@@ -351,9 +378,9 @@ export class MinecraftService extends EventEmitter {
 
   private startPolling(): void {
     if (this.pollingTimer) return;
-    // Run immediately, then every 10s
+    // Run immediately, then every 5s
     this.runPollingCycle();
-    this.pollingTimer = setInterval(() => this.runPollingCycle(), 10_000);
+    this.pollingTimer = setInterval(() => this.runPollingCycle(), 5_000);
     
     // Setup log flushing every 3 seconds
     if (!this.flushLogsTimer) {
@@ -409,10 +436,22 @@ export class MinecraftService extends EventEmitter {
     // Query world time
     this.writeRawCommand("time query daytime");
 
-    // Query each online player's dimension and position
+    const now = new Date();
+    // Query each online player's dimension and position, and periodically save playtime
     for (const name of this.players.names) {
       this.writeRawCommand(`data get entity ${name} Pos`);
       this.writeRawCommand(`data get entity ${name} Dimension`);
+
+      const session = this.playerSessions[name];
+      if (session?.join) {
+        const diff = (now.getTime() - session.join.getTime()) / 1000;
+        // Save playtime to DB roughly every 60 seconds
+        if (diff >= 60) {
+          session.total += diff;
+          session.join = now;
+          this.savePlayerPlaytime(name, Math.floor(session.total));
+        }
+      }
     }
   }
 
@@ -492,6 +531,25 @@ export class MinecraftService extends EventEmitter {
       content += `\n${throttleLine}\n`;
     }
 
+    // Force enable RCON for orphaned processes recovery
+    const rconPort = this.config.port + 10000;
+    const rconPassword = crypto.randomUUID().replace(/-/g, "").substring(0, 16);
+    
+    const rconSettings = {
+      "enable-rcon": "true",
+      "rcon.port": rconPort.toString(),
+      "rcon.password": rconPassword
+    };
+
+    for (const [key, val] of Object.entries(rconSettings)) {
+      const line = `${key}=${val}`;
+      if (new RegExp(`^${key}=.*$`, "m").test(content)) {
+        content = content.replace(new RegExp(`^${key}=.*$`, "m"), () => line);
+      } else {
+        content += `\n${line}\n`;
+      }
+    }
+
     if (content !== original) {
       await fs.writeFile(propPath, content, "utf8");
     }
@@ -547,7 +605,48 @@ export class MinecraftService extends EventEmitter {
   }
 
   private writeRawCommand(command: string): void {
-    this.child?.stdin.write(`${command}\n`);
+    if (this.child && !this.child.killed && this.child.stdin && this.child.stdin.writable) {
+      this.child.stdin.write(`${command}\n`);
+    } else if (this.adopted) {
+      this.sendRconCommand(command).then(response => {
+        if (response && response.trim()) {
+          // Procesar la respuesta del RCON como si fuera un log para mantener sincronizado el estado
+          this.parseLineForState(response);
+        }
+      }).catch((e: any) => {
+        this.addLog("system", `[RCON Fallback] Error sending command to orphaned process: ${e.message}`);
+      });
+    }
+  }
+
+  private async sendRconCommand(command: string): Promise<string> {
+    try {
+      const propPath = path.join(this.config.directory, "server.properties");
+      const content = await fs.readFile(propPath, "utf8");
+      
+      const portMatch = content.match(/^rcon\.port=(\d+)$/m);
+      const passMatch = content.match(/^rcon\.password=(.+)$/m);
+      
+      if (!portMatch || !passMatch) {
+        throw new Error("RCON not fully configured in server.properties");
+      }
+      
+      const rconPort = parseInt(portMatch[1], 10);
+      const rconPassword = passMatch[1].trim();
+
+      const rcon = await Rcon.connect({
+        host: "127.0.0.1",
+        port: rconPort,
+        password: rconPassword,
+        timeout: 3000
+      });
+
+      const response = await rcon.send(command);
+      rcon.end();
+      return response;
+    } catch (err: any) {
+      throw new Error(`RCON error: ${err.message}`);
+    }
   }
 
   private waitForExit(timeoutMs: number): Promise<void> {
@@ -595,9 +694,9 @@ export class MinecraftService extends EventEmitter {
   }
 
   private parseLineForState(message: string): void {
-    // Strip ANSI escape codes before parsing for internal state
+    // Strips ANSI escape codes from Paper's color console, and Minecraft color codes
     // so regexes don't break and we don't leak escape chars into commands.
-    const cleanMessage = message.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
+    const cleanMessage = message.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "").replace(/§[0-9a-fk-or]/ig, "");
     this.updateStateFromLog(cleanMessage);
     this.updatePlayersFromLog(cleanMessage);
     this.updateWorldTimeFromLog(cleanMessage);
@@ -624,6 +723,71 @@ export class MinecraftService extends EventEmitter {
     }
   }
 
+  public isOnline(): boolean {
+    return this.state === "ONLINE";
+  }
+
+  private async autoSyncSkin(username: string): Promise<void> {
+    try {
+      const account = await prisma.minecraftAccount.findFirst({ where: { nametag: username } });
+      if (!account || !account.skin) return;
+
+      this.addLog("system", `Sincronizando skin de cuenta para ${username}...`);
+      
+      const localPath = path.join(process.cwd(), "public", account.skin);
+      const fileBuffer = await fs.readFile(localPath);
+
+      const formData = new FormData();
+      formData.append("file", new Blob([new Uint8Array(fileBuffer)], { type: "image/png" }), "skin.png");
+      formData.append("visibility", "1"); // 1 = private
+
+      const response = await fetch("https://api.mineskin.org/generate/upload", {
+        method: "POST",
+        body: formData,
+        headers: { "User-Agent": "MinecraftManager/1.0" }
+      });
+
+      if (!response.ok) {
+        throw new Error(`MineSkin API error: ${response.status}`);
+      }
+
+      const json = await response.json();
+      const textureUrl = (json as any).data?.texture?.url;
+      if (textureUrl) {
+        const skinName = `custom_${username}`.toLowerCase();
+        this.sendCommand(`sr createcustom ${skinName} ${textureUrl}`);
+        
+        // Esperamos 10 segundos para que SkinsRestorer tenga tiempo de 
+        // procesar la URL (es una operación asíncrona interna del plugin)
+        setTimeout(() => {
+          this.sendCommand(`skin set ${skinName} ${username}`);
+          this.addLog("system", `Skin aplicada automáticamente a ${username}`);
+        }, 10000);
+      }
+    } catch (e: any) {
+      this.addLog("system", `Error al sincronizar skin de ${username}: ${e.message}`);
+    }
+  }
+
+  private stopS3BackupTimer(): void {
+    if (this.s3BackupTimer) {
+      clearInterval(this.s3BackupTimer);
+      this.s3BackupTimer = undefined;
+    }
+  }
+
+  private startS3BackupTimer(): void {
+    if (this.config.syncWithS3 !== false && !this.s3BackupTimer) {
+      this.s3BackupTimer = setInterval(async () => {
+        try {
+          await this.s3Sync.zipAndUpload(this.config.directory, this.config.id, (msg) => this.addLog("system", msg));
+        } catch (e: any) {
+          this.addLog("system", `Failed to backup to S3 (Periodic): ${e.message}`);
+        }
+      }, 10 * 60 * 1000); // 10 minutes
+    }
+  }
+
   /**
    * Reconoce un proceso de Minecraft que siga corriendo tras un reinicio del
    * panel (proceso huérfano): lo adopta, reconstruye su estado leyendo el
@@ -638,6 +802,7 @@ export class MinecraftService extends EventEmitter {
       this.adoptedPid = undefined;
       this.adoptionChecked = false;
       this.stopFileTail();
+      this.stopS3BackupTimer();
       this.state = "OFFLINE";
     }
     if (this.adoptionChecked || this.child) return;
@@ -675,6 +840,7 @@ export class MinecraftService extends EventEmitter {
     // El PID está vivo: el servidor está corriendo (o terminando de arrancar)
     this.state = "ONLINE";
     this.startFileTail();
+    this.startS3BackupTimer();
   }
 
   /** Reconstruye el estado (jugadores, mundo, online) desde logs/latest.log. */
@@ -715,6 +881,7 @@ export class MinecraftService extends EventEmitter {
       this.state = "OFFLINE";
       this.adopted = false;
       this.stopFileTail();
+      this.stopS3BackupTimer();
       this.addLog("system", "El proceso de Minecraft adoptado terminó.");
       await fs.rm(this.pidPath, { force: true }).catch(() => {});
       if (wasAdopted) {
@@ -900,6 +1067,7 @@ export class MinecraftService extends EventEmitter {
       this.addLog("system", "Minecraft is ONLINE.");
       this.startPolling();
       this.executePendingCommands();
+      this.startS3BackupTimer();
     }
   }
 
@@ -936,6 +1104,8 @@ export class MinecraftService extends EventEmitter {
         if (!this.playerSessions[name]) {
           this.playerSessions[name] = { join: now, total: 0, dimension: "unknown", x: null, y: null, z: null };
           this.loadPlayerPlaytime(name);
+        } else if (!this.playerSessions[name].join) {
+          this.playerSessions[name].join = now;
         }
       });
       return;
@@ -943,14 +1113,17 @@ export class MinecraftService extends EventEmitter {
 
     // Player joined
     const joinedMatch = message.match(/: (?<name>[A-Za-z0-9_]{1,16}) joined the game$/);
-    if (joinedMatch?.groups && !this.players.names.includes(joinedMatch.groups.name)) {
+    if (joinedMatch?.groups) {
       const name = joinedMatch.groups.name;
       const now = new Date();
-      this.players = {
-        ...this.players,
-        count: this.players.count + 1,
-        names: [...this.players.names, name]
-      };
+      if (!this.players.names.includes(name)) {
+        this.players = {
+          ...this.players,
+          count: this.players.count + 1,
+          names: [...this.players.names, name]
+        };
+      }
+      
       const existing = this.playerSessions[name];
       this.playerSessions[name] = {
         join: now,
@@ -963,6 +1136,13 @@ export class MinecraftService extends EventEmitter {
       if (!existing || existing.total === 0) {
         this.loadPlayerPlaytime(name);
       }
+
+      // Auto-sync account skin
+      if (!this.syncedSkins.has(name)) {
+        this.syncedSkins.add(name);
+        setTimeout(() => this.autoSyncSkin(name), 5000);
+      }
+      
       return;
     }
 
@@ -980,6 +1160,45 @@ export class MinecraftService extends EventEmitter {
       }
       const names = this.players.names.filter((n) => n !== name);
       this.players = { ...this.players, count: Math.max(0, names.length), names };
+      return;
+    }
+
+    // Parse death messages (if it matches a player name but isn't a chat message or join/leave)
+    // Only attempt if we have at least one online player
+    if (this.players.names.length > 0) {
+      // Chat messages typically have <Name> or [Name]. We match generic strings starting with the player's name.
+      const deathMatch = message.match(/\]: (?<name>[A-Za-z0-9_]{1,16}) (?<reason>(fell|was|blew|burned|tried|hit|died|withered|drowned|starved|suffocated|froze|went off|experienced|walked into|discovered|impaled|squashed|shot).*)$/);
+      if (deathMatch?.groups && this.players.names.includes(deathMatch.groups.name)) {
+        const name = deathMatch.groups.name;
+        const reason = deathMatch.groups.reason;
+        
+        // Exclude achievements
+        if (!reason.includes("has made the advancement") && !reason.includes("has completed the challenge")) {
+          const dimension = this.playerSessions[name]?.dimension || "minecraft:overworld";
+          
+          // Prioritize exact player + dimension match
+          let template = this.deathMessages.find(m => m.dimension === dimension && m.playerName === name)?.message;
+          // Next, player + any dimension (*)
+          if (!template) {
+            template = this.deathMessages.find(m => m.dimension === "*" && m.playerName === name)?.message;
+          }
+          // Next, generic dimension message
+          if (!template) {
+            template = this.deathMessages.find(m => m.dimension === dimension && (!m.playerName || m.playerName === ''))?.message;
+          }
+          // Fallback to generic message (*)
+          if (!template) {
+            template = this.deathMessages.find(m => m.dimension === "*" && (!m.playerName || m.playerName === ''))?.message;
+          }
+
+          if (template) {
+            const finalMessage = template.replace(/{player}/g, name).replace(/{reason}/g, reason);
+            // Send tellraw to everyone
+            const tellraw = `tellraw @a {"text":"${finalMessage}","color":"yellow"}`;
+            this.writeRawCommand(tellraw);
+          }
+        }
+      }
     }
   }
 
@@ -987,7 +1206,7 @@ export class MinecraftService extends EventEmitter {
     try {
       const rows = await prisma.$queryRaw<any[]>`SELECT playtimeSeconds FROM serverplayer WHERE serverId = ${this.config.id} AND name = ${name}`;
       if (rows && rows.length > 0) {
-        const dbTotal = rows[0].playtimeSeconds;
+        const dbTotal = Number(rows[0].playtimeSeconds);
         if (this.playerSessions[name]) {
           this.playerSessions[name].total = dbTotal;
         }
@@ -1085,12 +1304,15 @@ export class MinecraftService extends EventEmitter {
    * Attempt to extract a player name from a "data get entity" response line.
    * Paper logs it as: [server thread/INFO]: <Name> has the following entity data: ...
    */
-  private extractPlayerNameFromDataMsg(message: string): string | null {
-    // Match log prefix pattern: "[HH:MM:SS INFO]: <Name> has..."
-    const match = message.match(/\]\s*([A-Za-z0-9_]{1,16})\s+has the following entity data/i);
-    if (match) return match[1];
-    return null;
-  }
+    private extractPlayerNameFromDataMsg(message: string): string | null {
+      const match1 = message.match(/\]:?\s*([A-Za-z0-9_]{1,16})\s+has the following entity data/i);
+      if (match1) return match1[1];
+      
+      const match2 = message.match(/Data of entity ([A-Za-z0-9_]{1,16}):/i);
+      if (match2) return match2[1];
+
+      return null;
+    }
 
   private addLog(stream: LogStream, message: string): void {
     const timestamp = new Date();

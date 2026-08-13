@@ -33,6 +33,7 @@ export class UISidebar extends HTMLElement {
           <li class="${active === 'console' ? 'active' : ''}" id="tab-console"><a href="/server-console.html?id=${serverId}"><i data-lucide="terminal"></i> <span>Consola</span></a></li>
           <li class="${active === 'players' ? 'active' : ''}" id="tab-players"><a href="/server-players.html?id=${serverId}"><i data-lucide="users"></i> <span>Jugadores</span></a></li>
           <li class="${active === 'worlds' ? 'active' : ''}" id="tab-worlds"><a href="/server-worlds.html?id=${serverId}"><i data-lucide="globe"></i> <span>Mundos</span></a></li>
+          <li class="${active === 'messages' ? 'active' : ''}" id="tab-messages"><a href="/server-messages.html?id=${serverId}"><i data-lucide="message-square"></i> <span>Mensajes</span></a></li>
           <li class="${active === 'mods' ? 'active' : ''}" id="tab-mods"><a href="/server-mods.html?id=${serverId}"><i data-lucide="package"></i> <span>Mods</span></a></li>
           <li class="${active === 'network' ? 'active' : ''}" id="tab-network"><a href="/server-network.html?id=${serverId}"><i data-lucide="network"></i> <span>Red</span></a></li>
           <li class="${active === 'customize' ? 'active' : ''}" id="tab-customize"><a href="/server-customize.html?id=${serverId}"><i data-lucide="paintbrush"></i> <span>Personalizar</span></a></li>

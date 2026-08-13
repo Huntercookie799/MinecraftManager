@@ -19,6 +19,7 @@ model Server {
   logs         ServerLog[]
   players         ServerPlayer[]
   pendingCommands ServerPendingCommand[]
+  deathMessages   ServerDeathMessage[]
 }
 
 model ServerLog {
@@ -52,4 +53,19 @@ model ServerPendingCommand {
   createdAt DateTime @default(now())
 
   @@index([serverId])
+}
+
+model ServerDeathMessage {
+  id        Int    @id @default(autoincrement())
+  serverId  Int
+  server    Server @relation(fields: [serverId], references: [id], onDelete: Cascade)
+  dimension String
+  playerName String?
+  message   String @db.Text
+
+  // SQLite considers NULL values as distinct, so multiple nulls for the same dimension are allowed if we just did this, 
+  // but Prisma handles @@unique with nulls differently based on the provider. 
+  // For SQLite, it allows multiple nulls. We should handle the true uniqueness at the application level if needed,
+  // or rely on this constraint.
+  @@unique([serverId, dimension, playerName])
 }

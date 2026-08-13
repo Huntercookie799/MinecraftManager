@@ -199,6 +199,82 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
+  // Load players for skins grid
+  async function loadPlayersSkins() {
+    const grid = document.getElementById('players-skins-grid');
+    if (!grid) return;
+    grid.innerHTML = '<div style="color:var(--text-dim);font-size:0.85rem;">Cargando jugadores...</div>';
+    
+    try {
+      const res = await API.call(`/${serverId}/players`, 'GET', null, '/api/server');
+      if (res && res.players) {
+        if (res.players.length === 0) {
+           grid.innerHTML = '<div style="color:var(--text-dim);font-size:0.85rem;">No hay jugadores registrados aún.</div>';
+           return;
+        }
+        
+        grid.innerHTML = '';
+        res.players.forEach(p => {
+          const item = document.createElement('div');
+          item.style.cssText = 'background:var(--bg-core); border:1px solid var(--border-color); border-radius:var(--border-radius); padding:10px; text-align:center; cursor:pointer; transition:border-color 0.2s; position: relative;';
+          
+          const hasAccountSkin = !!p.skin;
+          const badge = hasAccountSkin ? `<div style="position:absolute; top:5px; right:5px; background:var(--primary); color:#fff; font-size:0.6rem; padding:2px 4px; border-radius:4px;" title="Tiene skin en su cuenta">★ Skin</div>` : '';
+          const imgSrc = p.avatar ? p.avatar : `https://mc-heads.net/body/${p.name}/100`;
+
+          item.innerHTML = `
+            ${badge}
+            <img src="${imgSrc}" style="height:100px; border-radius:4px; margin-bottom:8px; image-rendering:pixelated;" alt="${p.name}">
+            <div style="font-size:0.85rem; font-weight:600; color:var(--text-main); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${p.name}">${p.name}</div>
+          `;
+          item.addEventListener('mouseover', () => item.style.borderColor = 'var(--primary)');
+          item.addEventListener('mouseout', () => item.style.borderColor = 'var(--border-color)');
+          item.addEventListener('click', async () => {
+             const usernameInput = document.getElementById('skin-username');
+             if (usernameInput) {
+                const inp = usernameInput.querySelector('input') ?? usernameInput;
+                inp.value = p.name;
+                inp.focus();
+                window.Toast?.show(`Seleccionado: ${p.name}`, 'info');
+             }
+
+             if (hasAccountSkin) {
+               if (confirm(`El jugador ${p.name} tiene una skin guardada en su cuenta. ¿Deseas aplicarla directamente al servidor?`)) {
+                  const statusEl = document.getElementById('skin-status');
+                  if (statusEl) { statusEl.style.display = 'block'; statusEl.textContent = 'Aplicando skin de cuenta...'; }
+                  try {
+                    const formData = new FormData();
+                    formData.append('username', p.name);
+                    formData.append('accountSkinUrl', p.skin);
+                    // Add a dummy file so fastify multipart doesn't throw "no file uploaded" (since we use request.file())
+                    formData.append('dummy', new Blob([''], { type: 'text/plain' }), 'dummy.txt');
+
+                    const resSkin = await fetch(`/api/server/${serverId}/skins/account`, {
+                      method: 'POST',
+                      headers: { 'Authorization': `Bearer ${localStorage.getItem('mm_token')}` },
+                      body: formData,
+                    });
+                    if (!resSkin.ok) throw new Error(await resSkin.text());
+                    if (statusEl) statusEl.textContent = '✓ Skin de cuenta aplicada';
+                    window.Toast?.show('Skin de cuenta aplicada correctamente', 'success');
+                  } catch (e) {
+                    if (statusEl) statusEl.textContent = '✗ Error al aplicar';
+                    window.Toast?.show('Error al aplicar la skin de cuenta', 'error');
+                  }
+               }
+             }
+          });
+          grid.appendChild(item);
+        });
+      }
+    } catch (e) {
+      grid.innerHTML = '<div style="color:var(--text-danger);font-size:0.85rem;">Error al cargar jugadores</div>';
+    }
+  }
+
+  document.getElementById('btn-refresh-players')?.addEventListener('click', loadPlayersSkins);
+  loadPlayersSkins();
+
   // Save
   document.getElementById('btn-save-server-settings')?.addEventListener('click', async () => {
     const nameEl = document.getElementById('edit-server-name');

@@ -125,6 +125,51 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
         WHERE serverId = ${id}
         ORDER BY playtimeSeconds DESC
       `;
+
+      // Añadir el tiempo en vivo si el jugador está conectado
+      try {
+        const svc = serverManager.getServiceById(id);
+        if (svc) {
+          const status = svc.getStatus();
+          const now = new Date();
+          for (const p of players) {
+            // Asegurar que playtimeSeconds sea Number para evitar concatenación en caso de que Prisma retorne BigInt/String
+            p.playtimeSeconds = Number(p.playtimeSeconds) || 0;
+            
+            const livePlayer = status.playersInfo?.find((lp: any) => lp.name === p.name);
+            if (livePlayer) {
+              const session = (svc as any)['playerSessions']?.[p.name];
+              if (session && session.join) {
+                 const liveDiff = (now.getTime() - session.join.getTime()) / 1000;
+                 p.playtimeSeconds += Math.floor(liveDiff);
+              }
+            }
+          }
+        }
+      } catch (e) {
+        // El servidor podría estar offline, ignorar
+      }
+
+      // Check if players have registered MinecraftAccounts to include their skins/avatars
+      if (players.length > 0) {
+        const playerNames = players.map(p => p.name);
+        const accounts = await prisma.minecraftAccount.findMany({
+          where: { nametag: { in: playerNames } },
+          select: { nametag: true, skin: true, avatar: true }
+        });
+
+        for (const p of players) {
+          const acc = accounts.find(a => a.nametag === p.name);
+          if (acc) {
+            p.skin = acc.skin;
+            p.avatar = acc.avatar;
+          }
+        }
+      }
+
+      // Sort again in case live times changed the order
+      players.sort((a, b) => Number(b.playtimeSeconds) - Number(a.playtimeSeconds));
+
       return { success: true, players };
     } catch (e) {
       console.error("Error fetching historical players", e);
@@ -169,18 +214,24 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
       }
 
       const json = await response.json();
-      const { value, signature } = (json as any).data.texture;
+      const textureValue = (json as any).data?.texture?.value;
+      if (!textureValue) {
+         throw new Error("Mineskin no devolvió una textura válida.");
+      }
 
-      const command = `skin custom ${username} ${value} ${signature}`;
+      const skinName = `custom_${username}`.toLowerCase();
+      const command1 = `sr createcustom ${skinName} ${textureValue}`;
+      const command2 = `sr applyskin ${username} ${skinName}`;
       
       if (isOnline) {
         // Inyectar comando de SkinRestorer
-        svc.sendCommand(command);
+        svc.sendCommand(command1);
+        svc.sendCommand(command2);
         return { success: true, message: `Skin aplicada exitosamente a ${username}.` };
       } else {
         await prisma.$executeRaw`
           INSERT INTO serverpendingcommand (serverId, command, createdAt)
-          VALUES (${serverId}, ${command}, NOW())
+          VALUES (${serverId}, ${command1}, NOW()), (${serverId}, ${command2}, NOW())
         `;
         const pendingMsg = (svc && svc.isAdopted)
           ? "El servidor es un proceso huérfano (sin consola). La skin se aplicará automáticamente cuando lo reinicies."
@@ -192,6 +243,76 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
       return reply.code(500).send({ error: e.message });
     }
   });
+
+    // POST /:id/skins/account
+    app.post<{ Params: { id: string } }>("/:id/skins/account", async (request, reply) => {
+      try {
+        const serverId = parseInt(request.params.id, 10);
+        const svc = serverManager.getServiceById(serverId);
+        const isOnline = svc && svc.getStatus().status === "ONLINE" && !svc.isAdopted;
+  
+        const data = await request.file();
+        if (!data) {
+          return reply.code(400).send({ error: "Faltan datos" });
+        }
+  
+        const username = (data.fields.username as any)?.value as string;
+        const accountSkinUrl = (data.fields.accountSkinUrl as any)?.value as string;
+        
+        if (!username || !accountSkinUrl) {
+          return reply.code(400).send({ error: "Falta username o accountSkinUrl" });
+        }
+  
+        // Leemos el archivo local
+        const localPath = path.join(__dirname, "..", "..", "..", "public", accountSkinUrl);
+        const fileBuffer = await fs.readFile(localPath);
+  
+        const formData = new FormData();
+        formData.append("file", new Blob([new Uint8Array(fileBuffer)], { type: "image/png" }), "skin.png");
+        formData.append("visibility", "1"); // 1 = private
+  
+        const response = await fetch("https://api.mineskin.org/generate/upload", {
+          method: "POST",
+          body: formData,
+          headers: {
+            "User-Agent": "MinecraftManager/1.0"
+          }
+        });
+  
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`Error en MineSkin API: ${response.status} ${errorText}`);
+        }
+  
+        const json = await response.json();
+        const textureValue = (json as any).data?.texture?.value;
+        if (!textureValue) {
+           throw new Error("Mineskin no devolvió una textura válida.");
+        }
+  
+        const skinName = `custom_${username}`.toLowerCase();
+        const command1 = `sr createcustom ${skinName} ${textureValue}`;
+        const command2 = `sr applyskin ${username} ${skinName}`;
+      
+        if (isOnline) {
+          svc.sendCommand(command1);
+          svc.sendCommand(command2);
+          return { success: true, message: `Skin de cuenta aplicada exitosamente a ${username}.` };
+        } else {
+          await prisma.$executeRaw`
+            INSERT INTO serverpendingcommand (serverId, command, createdAt)
+            VALUES (${serverId}, ${command1}, NOW()), (${serverId}, ${command2}, NOW())
+          `;
+          const pendingMsg = (svc && svc.isAdopted)
+            ? "El servidor es un proceso huérfano. La skin se aplicará cuando lo reinicies."
+            : "El servidor está apagado. La skin se aplicará cuando inicie.";
+          return { success: true, message: pendingMsg };
+        }
+      } catch (e: any) {
+        console.error("[ServerController] Error subiendo skin de cuenta:", e);
+        return reply.code(500).send({ error: e.message });
+      }
+    });
 
   // POST /:id/install-skinrestorer
   app.post<{ Params: { id: string } }>("/:id/install-skinrestorer", async (request, reply) => {
@@ -1168,6 +1289,46 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
       }
       app.log.error(e);
       return reply.code(500).send({ error: "Failed to create ZIP file" });
+    }
+  });
+
+  // Get death messages
+  app.get<{ Params: { id: string } }>("/:id/death-messages", async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    try {
+      const messages = await prisma.$queryRaw`SELECT * FROM serverdeathmessage WHERE serverId = ${id}`;
+      return reply.send(messages);
+    } catch (err) {
+      console.error("Error fetching death messages:", err);
+      return reply.code(500).send({ error: "Failed to fetch messages" });
+    }
+  });
+
+  // Set death messages
+  app.post<{ Params: { id: string }, Body: { messages: Array<{ dimension: string, message: string, playerName?: string | null }> } }>("/:id/death-messages", async (request, reply) => {
+    const id = parseInt(request.params.id, 10);
+    const { messages } = request.body;
+    
+    try {
+      await prisma.$executeRaw`DELETE FROM serverdeathmessage WHERE serverId = ${id}`;
+      
+      for (const msg of messages) {
+        if (msg.message && msg.message.trim() !== '') {
+          const pName = (msg.playerName && msg.playerName.trim() !== '') ? msg.playerName.trim() : null;
+          await prisma.$executeRaw`INSERT INTO serverdeathmessage (serverId, dimension, message, playerName) VALUES (${id}, ${msg.dimension}, ${msg.message}, ${pName})`;
+        }
+      }
+      
+      // Also update the cached messages in the active service if running
+      const svc = serverManager.getServiceById(id);
+      if (svc) {
+        (svc as any).loadDeathMessages(); // using any to bypass type check since we will add this method
+      }
+
+      return reply.send({ success: true });
+    } catch (err) {
+      console.error("Error saving death messages:", err);
+      return reply.code(500).send({ error: "Failed to save messages" });
     }
   });
 }
