@@ -64,6 +64,7 @@ minecraft/server/version_history.json
 # ── Archivos temporales del proceso ──────────────────────────
 temp_upload.zip
 temp_download.zip
+temp_forge/
 
 # ── Scripts locales de la maquina (no se suben) ─────────────
 scripts_personales/
