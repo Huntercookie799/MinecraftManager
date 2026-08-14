@@ -92,7 +92,10 @@
     <div class="card" style="margin-top: 20px;">
       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
         <h3><i data-lucide="settings" style="width:20px;height:20px;vertical-align:middle;"></i> Propiedades del Servidor (server.properties)</h3>
-        <ui-button variant="success" id="btn-save-settings"><i data-lucide="save" style="width:16px;height:16px;"></i> Guardar Cambios</ui-button>
+        <div style="display: flex; gap: 10px;">
+          <ui-button variant="primary" id="btn-install-crossplay" style="display: none;"><i data-lucide="download" style="width:16px;height:16px;"></i> Instalar Crossplay (Geyser)</ui-button>
+          <ui-button variant="success" id="btn-save-settings"><i data-lucide="save" style="width:16px;height:16px;"></i> Guardar Cambios</ui-button>
+        </div>
       </div>
       <p style="color: var(--warning); font-size: 0.9rem; margin-bottom: 20px;">
         <i data-lucide="alert-triangle" style="width:16px;height:16px;vertical-align:middle;"></i>

@@ -28,6 +28,7 @@ interface PlayerState {
 
 import { jarManager } from "./JarManager";
 import { S3SyncService } from "./S3SyncService";
+import { autoRepairService } from "./AutoRepairService";
 import { Rcon } from "rcon-client";
 import crypto from "crypto";
 import fsSync from "fs";
@@ -110,6 +111,7 @@ export class MinecraftService extends EventEmitter {
   private tailOffset = 0;
   private adoptionChecked = false;
   private refreshTried = new Set<string>();
+  private autoRepairAttempts = 0;
 
   constructor(public readonly config: MinecraftServerConfig) {
     super();
@@ -148,15 +150,23 @@ export class MinecraftService extends EventEmitter {
       this.stopS3BackupTimer();
     }
 
-    await this.ensureRuntimeIsReady();
+    this.state = "STARTING";
+    this.startedAt = new Date();
+    this.lastError = undefined;
+    this.autoRepairAttempts = 0;
+
+    try {
+      await this.ensureRuntimeIsReady();
+    } catch (e: any) {
+      this.state = "ERROR";
+      this.lastError = e.message;
+      this.addLog("system", `Setup error: ${e.message}`);
+      throw e;
+    }
 
     await this.ensureServerProperties();
     await this.ensureServerIcon();
     this.readServerProperties();
-
-    this.state = "STARTING";
-    this.startedAt = new Date();
-    this.lastError = undefined;
 
     // Puertos privilegiados (<1024, p.ej. 80/443): en Linux requieren root o CAP_NET_BIND_SERVICE
     if (this.config.port < 1024 && process.platform !== "win32" && typeof process.getuid === "function" && process.getuid() !== 0) {
@@ -179,11 +189,52 @@ export class MinecraftService extends EventEmitter {
 
     this.addLog("system", `Starting Minecraft from ${this.config.directory}`);
 
-    const args = ["-Xms" + this.config.memory, "-Xmx" + this.config.memory, "-jar", this.jarPath ?? env.paperJar, "nogui"];
+    let exeName = env.javaBin;
+    let args: string[] = [];
 
-    const child = spawn(env.javaBin, args, {
+    if (this.config.softwareType === 'bedrock') {
+      exeName = this.jarPath || (process.platform === "win32" ? "bedrock_server.exe" : "./bedrock_server");
+      args = []; // Bedrock doesn't use -Xms -Xmx etc.
+    } else {
+      // Auto-detect Java requirement based on Minecraft version
+      if (this.version) {
+        const v = this.version.split('.').map(Number);
+        const is1_17_or_above = v[0] > 1 || (v[0] === 1 && v[1] >= 17);
+        const is1_20_5_or_above = v[0] > 1 || (v[0] === 1 && (v[1] > 20 || (v[1] === 20 && v[2] >= 5)));
+
+        if (is1_20_5_or_above) {
+          // Needs Java 21 (fallback to default javaBin if no specific bin for 21 exists)
+        } else if (is1_17_or_above) {
+          // Needs Java 17
+          if (env.javaBin17) {
+            exeName = env.javaBin17;
+            this.addLog("system", `Auto-detected Java 17 requirement. Using JAVA_BIN_17.`);
+          }
+        } else {
+          // Needs Java 8 or 11
+          if (env.javaBin8) {
+            exeName = env.javaBin8;
+            this.addLog("system", `Auto-detected Java 8 requirement. Using JAVA_BIN_8.`);
+          }
+        }
+      }
+
+      if (this.jarPath && this.jarPath.endsWith("win_args.txt")) {
+        // Forge >= 1.17 uses args file instead of -jar
+        args = ["-Xms" + this.config.memory, "-Xmx" + this.config.memory, `@${this.jarPath}`, "nogui"];
+      } else {
+        args = ["-Xms" + this.config.memory, "-Xmx" + this.config.memory, "-jar", this.jarPath ?? env.paperJar, "nogui"];
+      }
+    }
+
+    const spawnEnv = { ...process.env };
+    if (this.config.softwareType === 'bedrock' && process.platform !== "win32") {
+      spawnEnv.LD_LIBRARY_PATH = this.config.directory;
+    }
+
+    const child = spawn(exeName, args, {
       cwd: this.config.directory,
-      env: process.env,
+      env: spawnEnv,
       stdio: "pipe",
       windowsHide: true
     });
@@ -214,6 +265,9 @@ export class MinecraftService extends EventEmitter {
       this.startedAt = undefined;
       this.players = { ...this.players, count: 0, names: [] };
       this.worldTime = null;
+      // Guardar si estábamos parando intencionalmente ANTES de cambiar this.state
+      const wasStopping = this.state === "STOPPING";
+
       this.state = expectedStop ? "OFFLINE" : "ERROR";
       this.stopPolling();
       this.adopted = false;
@@ -226,8 +280,25 @@ export class MinecraftService extends EventEmitter {
       
       this.stopS3BackupTimer();
 
-      // S3: Crear un backup tras apagarse (esperado o inesperado)
-      if (this.config.syncWithS3 !== false) {
+      // Auto-reparación de mods
+      let willRestart = false;
+      if (!wasStopping && this.autoRepairAttempts < 3) {
+        this.addLog("system", "[Auto-Repair] Verificando dependencias faltantes...");
+        const consoleOutput = this.logs.toArray().slice(-1000).map((l: any) => l.message).join('\n');
+        const repaired = await autoRepairService.analyzeAndRepair(this.config, (msg) => this.addLog("system", msg), consoleOutput);
+        if (repaired) {
+          willRestart = true;
+          this.autoRepairAttempts++;
+          this.addLog("system", `[Auto-Repair] Intento ${this.autoRepairAttempts}/3: Dependencias instaladas, reiniciando servidor...`);
+          // Esperamos un segundo y llamamos a start() de nuevo
+          setTimeout(() => {
+            this.start().catch((err) => this.addLog("system", `[Auto-Repair] Error reiniciando: ${err.message}`));
+          }, 1000);
+        }
+      }
+
+      // S3: Crear un backup tras apagarse (esperado o inesperado) solo si no vamos a reiniciar automáticamente
+      if (!willRestart && this.config.syncWithS3 !== false) {
         try {
           await this.s3Sync.zipAndUpload(this.config.directory, this.config.id, (msg) => this.addLog("system", msg));
         } catch (e: any) {
@@ -465,7 +536,12 @@ export class MinecraftService extends EventEmitter {
 
   private async ensureServerJar(): Promise<void> {
     try {
-      this.jarPath = await jarManager.resolveJarPath(this.config.softwareType || "purpur", this.version, this.config.directory);
+      this.jarPath = await jarManager.resolveJarPath(
+        this.config.softwareType || "purpur", 
+        this.version, 
+        this.config.directory,
+        (msg: string) => this.addLog("system", msg)
+      );
     } catch (e: any) {
       throw new MinecraftServiceError(
         `Failed to obtain Server jar for version ${this.version}: ${e.message}`,
@@ -1062,8 +1138,9 @@ export class MinecraftService extends EventEmitter {
   }
 
   private updateStateFromLog(message: string): void {
-    if (this.state === "STARTING" && /\bDone \([\d.]+s\)!/i.test(message)) {
+    if (this.state === "STARTING" && (/\bDone \([\d.]+s\)!/i.test(message) || /Server started\./i.test(message))) {
       this.state = "ONLINE";
+      this.autoRepairAttempts = 0;
       this.addLog("system", "Minecraft is ONLINE.");
       this.startPolling();
       this.executePendingCommands();
@@ -1111,8 +1188,8 @@ export class MinecraftService extends EventEmitter {
       return;
     }
 
-    // Player joined
-    const joinedMatch = message.match(/: (?<name>[A-Za-z0-9_]{1,16}) joined the game$/);
+    // Player joined (Java and Bedrock)
+    const joinedMatch = message.match(/: (?<name>[A-Za-z0-9_]{1,16}) joined the game$/) || message.match(/Player connected: (?<name>[A-Za-z0-9_]{1,16}), xuid:/);
     if (joinedMatch?.groups) {
       const name = joinedMatch.groups.name;
       const now = new Date();
@@ -1146,8 +1223,8 @@ export class MinecraftService extends EventEmitter {
       return;
     }
 
-    // Player left
-    const leftMatch = message.match(/: (?<name>[A-Za-z0-9_]{1,16}) left the game$/);
+    // Player left (Java and Bedrock)
+    const leftMatch = message.match(/: (?<name>[A-Za-z0-9_]{1,16}) left the game$/) || message.match(/Player disconnected: (?<name>[A-Za-z0-9_]{1,16}), xuid:/);
     if (leftMatch?.groups) {
       const name = leftMatch.groups.name;
       const now = new Date();

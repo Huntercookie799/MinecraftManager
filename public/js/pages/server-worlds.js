@@ -70,6 +70,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     window.Toast?.show(modpack ? `Creando mundo "${name}" con modpack (puede tardar)...` : `Creando mundo "${name}"...`, 'info');
     try {
       const res = await WorldModel.create(serverId, name, allowMods, allowPlugins, modpack);
+      if (!res || res.error) {
+        if (btn) btn.disabled = false;
+        return;
+      }
+      
       const info = res?.world?.modpack;
       if (info) {
         window.Toast?.show(`Modpack "${info.name}" instalado en el mundo (${info.installed} archivos${info.failed ? `, ${info.failed} fallaron` : ''})`, info.installed > 0 ? 'success' : 'warning');
@@ -201,6 +206,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     try {
       let endpoint = `/${serverId}/addons/search?limit=24&type=modpack`;
+      const isCompatible = DOM.get('modpack-search-compatible')?.checked !== false;
+      if (!isCompatible) endpoint += `&version=any`;
+      
       if (query) endpoint += `&q=${encodeURIComponent(query)}`;
       else endpoint += `&q=popular`; // Si está vacío, traemos algo por defecto. Aunque la API exige 'q'. 'modpack' también sirve.
       if (category) endpoint += `&category=${encodeURIComponent(category)}`;
@@ -416,6 +424,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             <button class="world-action-btn btn-download-world" data-id="${w.id}" data-world="${w.name}" title="Descargar como .zip">
               <i data-lucide="download" style="width:14px;height:14px;"></i>
             </button>
+            <button class="world-action-btn btn-download-modpack" data-id="${w.id}" data-world="${w.name}" title="Descargar Modpack (Forge)">
+              <i data-lucide="package" style="width:14px;height:14px;"></i>
+            </button>
             <button class="world-action-btn btn-delete-world danger ${isActive ? 'disabled-btn' : ''}" data-id="${w.id}" data-world="${w.name}" title="Eliminar mundo" ${isActive ? 'disabled' : ''}>
               <i data-lucide="trash-2" style="width:14px;height:14px;"></i>
             </button>
@@ -566,6 +577,39 @@ document.addEventListener('DOMContentLoaded', async () => {
           window.Toast?.show(`"${worldName}.zip" descargado`, 'success');
         } catch (e) {
           window.Toast?.show('Error al descargar el mundo: ' + e.message, 'error');
+        }
+      });
+    });
+
+    // ── Descargar modpack de Forge ──────────────────────────────────────
+    tbody.querySelectorAll('.btn-download-modpack').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const worldId   = btn.dataset.id;
+        const worldName = btn.dataset.world;
+        window.Toast?.show(`Preparando Modpack (Forge) de "${worldName}"...`, 'info');
+        try {
+          const token = localStorage.getItem('mm_token');
+          const res = await fetch(`/api/server/${serverId}/worlds/${worldId}/export-modpack`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (!res.ok) {
+            let msg = 'Error al descargar el modpack';
+            try { const j = await res.json(); if (j?.error) msg = j.error; } catch { msg = await res.text(); }
+            throw new Error(msg);
+          }
+
+          const blob = await res.blob();
+          const url  = URL.createObjectURL(blob);
+          const a    = document.createElement('a');
+          a.href     = url;
+          a.download = `Modpack_${worldName}.zip`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+          window.Toast?.show(`"Modpack_${worldName}.zip" descargado`, 'success');
+        } catch (e) {
+          window.Toast?.show('Error al descargar el modpack: ' + e.message, 'error');
         }
       });
     });

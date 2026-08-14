@@ -501,8 +501,12 @@ ui-button {
   transform: translateY(1px);
 }
 
-.btn-primary { background: var(--text-main); border-color: var(--text-main); color: var(--bg-core); }
+.btn-primary { background: var(--text-main); border-color: var(--text-main); color: var(--bg-core) !important; }
 .btn-primary:not(:disabled):hover { opacity: 0.9; }
+
+.btn-ghost { background: transparent; border-color: transparent; color: var(--text-dim); }
+.btn-ghost:not(:disabled):hover { background: var(--bg-card-hover); color: var(--text-main); }
+
 
 .btn-success { background: var(--color-success); border-color: var(--color-success); color: #000; }
 .btn-success:not(:disabled):hover { background: var(--color-success-hover); color: #000; }

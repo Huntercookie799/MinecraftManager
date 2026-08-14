@@ -17,6 +17,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   const form = document.getElementById('settings-form');
   const loader = document.getElementById('settings-loading');
   const saveBtn = document.getElementById('btn-save-settings');
+  const installCrossplayBtn = document.getElementById('btn-install-crossplay');
 
   // Load server status (just for header)
   async function loadServerStatus() {
@@ -30,6 +31,11 @@ document.addEventListener('DOMContentLoaded', async () => {
       if (server) {
         serverNameEl.textContent = server.name;
         serverInfoEl.textContent = `${server.memory} | Puerto: ${server.port}`;
+        
+        // Show install crossplay button only for non-bedrock servers
+        if (server.softwareType !== 'bedrock') {
+          installCrossplayBtn.style.display = 'inline-flex';
+        }
       } else {
         serverNameEl.textContent = 'Servidor ' + serverId;
       }
@@ -102,6 +108,28 @@ document.addEventListener('DOMContentLoaded', async () => {
       console.error('Error saving properties:', e);
       Toast.show('Error al guardar las propiedades.', 'error');
       saveBtn.disabled = false;
+    }
+  });
+
+  installCrossplayBtn.addEventListener('click', async () => {
+    if (!confirm('Esto descargará e instalará GeyserMC y Floodgate en la carpeta plugins. ¿Deseas continuar?')) return;
+    
+    try {
+      installCrossplayBtn.disabled = true;
+      const originalText = installCrossplayBtn.innerHTML;
+      installCrossplayBtn.innerHTML = '<i data-lucide="loader-2" class="spin-icon" style="width:16px;height:16px;"></i> Instalando...';
+      if (window.lucide) window.lucide.createIcons();
+
+      const res = await API.call(`/${serverId}/install-crossplay`, 'POST', null, '/api/server');
+      Toast.show(res.message || 'Instalado correctamente.', 'success');
+      
+      installCrossplayBtn.innerHTML = originalText;
+      installCrossplayBtn.disabled = false;
+      if (window.lucide) window.lucide.createIcons();
+    } catch (e) {
+      console.error('Error instalando crossplay:', e);
+      Toast.show('Error al instalar Crossplay.', 'error');
+      installCrossplayBtn.disabled = false;
     }
   });
 

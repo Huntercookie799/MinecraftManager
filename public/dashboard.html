@@ -41,10 +41,16 @@
           <span id="lan-ip-chip" style="font-family:var(--font-mono); font-size:0.8rem; color:var(--text-dim); background:var(--bg-core); border:1px solid var(--border-color); padding:4px 10px; border-radius:var(--border-radius); display:none;"></span>
         </div>
       </div>
-      <ui-button variant="success" id="btn-show-new-server" style="width: auto;">
-        <i data-lucide="plus"></i>
-        Nuevo Servidor
-      </ui-button>
+      <div style="display:flex; gap: 10px;">
+        <ui-button variant="secondary" id="btn-show-compatibility" style="width: auto;">
+          <i data-lucide="check-circle"></i>
+          Consultar Compatibilidad
+        </ui-button>
+        <ui-button variant="success" id="btn-show-new-server" style="width: auto;">
+          <i data-lucide="plus"></i>
+          Nuevo Servidor
+        </ui-button>
+      </div>
     </div>
 
     <div id="ip-change-banner" style="display:none; margin-bottom:15px; padding:10px 14px; border:1px solid var(--color-warning, #eab308); border-radius:var(--border-radius); font-family:var(--font-mono); font-size:0.75rem; color:var(--color-warning, #eab308); background:rgba(234,179,8,0.08);"></div>
@@ -80,59 +86,9 @@
     </ui-table>
   </div>
 
-  <!-- Modal para Nuevo Servidor -->
-  <ui-modal id="new-server-modal" title="Crear Nuevo Servidor" class="modal-horizontal" style="display: none;">
-    <div>
-      <div class="form-group">
-        <label>Nombre:</label>
-        <ui-input id="new-server-name" placeholder="Ej. MiServidorSurvival"></ui-input>
-      </div>
-      <div class="form-group">
-        <label>Memoria (Ej. 2G, 4G):</label>
-        <ui-input id="new-server-memory" value="2G"></ui-input>
-      </div>
-      <div class="form-group">
-        <label>Motor del Servidor:</label>
-        <select id="new-server-software" style="width: 100%;">
-          <option value="purpur">Purpur (Plugins / Recomendado)</option>
-          <option value="fabric">Fabric (Mods)</option>
-          <option value="forge">Forge (Mods)</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Versión de Minecraft:</label>
-        <select id="new-server-version" style="width: 100%;">
-          <option value="">Cargando versiones...</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Estrategia de acceso:</label>
-        <select id="new-server-port-strategy" style="width: 100%;">
-          <option value="">Automático (25565+)</option>
-          <option value="80">Puerto 80 — Red restringida</option>
-          <option value="443">Puerto 443 (SSL) — Red restringida</option>
-          <option value="custom">Personalizado...</option>
-        </select>
-        <ui-input type="number" id="new-server-port" placeholder="Ej. 25566" style="display:none; margin-top:8px;"></ui-input>
-      </div>
-      <div class="form-group">
-        <label>Hostname de acceso (opcional):</label>
-        <ui-input id="new-server-hostname" placeholder="Ej. angellap.server01"></ui-input>
-      </div>
-      
-      <div class="full-width" style="margin-top: 10px;">
-        <p style="color: var(--text-dim); font-family: var(--font-mono); font-size: 0.75rem; margin: 0;">
-          Si la red solo permite conexiones entrantes por 80/443, elige esa opción: los jugadores entrarán por <code>IP:80</code> o <code>IP:443</code>.<br>
-          Con el router por hostname, varios servidores comparten el puerto 80/443: cada jugador entra a <code>&lt;hostname&gt;:443</code>.
-        </p>
-      </div>
-      
-      <div class="button-group full-width" style="flex-direction: row; gap: 10px;">
-        <ui-button variant="secondary" id="btn-cancel-new-server">Cancelar</ui-button>
-        <ui-button variant="success" id="btn-create-server">Crear Servidor</ui-button>
-      </div>
-    </div>
-  </ui-modal>
+
+
+
 
   <script type="module" src="/js/pages/dashboard.js?v=3"></script>
 </body>

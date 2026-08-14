@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <script>!function(){var t=localStorage.getItem("mc-theme")||"dark";document.documentElement.dataset.theme=t;document.documentElement.classList.add("no-transition")}();</script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Administración de Espacio - Minecraft Manager</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/js/components/index.js?v=3"></script>
+  <script type="module" src="/js/components/UISidebar.js?v=3"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script type="module" src="/js/components/UIThemeToggle.js?v=3"></script>
+</head>
+<body>
+  <!-- Sidebar Component -->
+  <ui-sidebar type="main" active="storage"></ui-sidebar>
+
+  <!-- Content -->
+  <div class="content" id="storage-view">
+    <div class="header" style="flex-wrap: wrap; gap: 15px; align-items: center; justify-content: space-between;">
+      <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+        <h2 style="margin: 0;">Administración de Espacio</h2>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top: 20px;">
+      <h3 style="margin-top:0;">Resumen de Servidores</h3>
+      <div id="storage-list">
+        <div style="text-align: center; padding: 20px; color: var(--text-dim);">Cargando uso de almacenamiento...</div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/js/pages/storage.js?v=3"></script>
+</body>
+</html>

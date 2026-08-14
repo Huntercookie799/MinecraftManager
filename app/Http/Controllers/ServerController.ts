@@ -353,12 +353,78 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
     }
   });
 
+  // POST /:id/install-crossplay
+  app.post<{ Params: { id: string } }>("/:id/install-crossplay", async (request, reply) => {
+    try {
+      const serverId = parseInt(request.params.id, 10);
+      const server = await prisma.server.findUnique({ where: { id: serverId } });
+      if (!server) return reply.code(404).send({ error: "Server no encontrado" });
+
+      if (server.softwareType === "bedrock") {
+        return reply.code(400).send({ error: "Este servidor ya es de Bedrock nativo." });
+      }
+
+      const pluginsDir = path.join(server.path, "plugins");
+      await fs.mkdir(pluginsDir, { recursive: true });
+
+      // URLs for Geyser and Floodgate from GeyserMC Build API
+      const geyserUrl = "https://download.geysermc.org/v2/projects/geyser/versions/latest/builds/latest/downloads/spigot";
+      const floodgateUrl = "https://download.geysermc.org/v2/projects/floodgate/versions/latest/builds/latest/downloads/spigot";
+
+      const downloadFile = async (url: string, destPath: string) => {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Error al descargar desde ${url}: ${res.statusText}`);
+        const buffer = await res.arrayBuffer();
+        await fs.writeFile(destPath, Buffer.from(buffer));
+      };
+
+      await Promise.all([
+        downloadFile(geyserUrl, path.join(pluginsDir, "Geyser-Spigot.jar")),
+        downloadFile(floodgateUrl, path.join(pluginsDir, "Floodgate-Spigot.jar"))
+      ]);
+
+      // Modificar config.yml de Geyser para que el puerto coincida con el servidor
+      const geyserConfigDir = path.join(pluginsDir, "Geyser-Spigot");
+      await fs.mkdir(geyserConfigDir, { recursive: true });
+      const geyserConfigPath = path.join(geyserConfigDir, "config.yml");
+
+      let configContent = "";
+      try {
+        configContent = await fs.readFile(geyserConfigPath, "utf8");
+      } catch (e) {
+        // No existe todavía, esperar a que inicie el server, pero si inyectamos uno mínimo Geyser lo completará.
+        // O podemos simplemente forzar la creación de la sección bedrock.
+        configContent = `bedrock:\n  port: ${server.port}\n  clone-remote-port: true\n`;
+      }
+
+      // Si existe, reemplazamos el puerto
+      if (configContent && /port:\s*\d+/.test(configContent)) {
+         configContent = configContent.replace(/(bedrock:[\s\S]*?)port:\s*\d+/, `$1port: ${server.port}`);
+      } else if (!configContent.includes("bedrock:")) {
+         configContent += `\nbedrock:\n  port: ${server.port}\n  clone-remote-port: true\n`;
+      }
+
+      await fs.writeFile(geyserConfigPath, configContent, "utf8");
+
+      return { success: true, message: "Geyser y Floodgate instalados correctamente. Reinicia el servidor." };
+    } catch (e: any) {
+      console.error("[ServerController] Error instalando Crossplay:", e);
+      return reply.code(500).send({ error: e.message });
+    }
+  });
+
 
 
   // List all servers
   // List available Minecraft versions (Purpur)
   app.get("/versions", async () => {
     const versions = await jarManager.listVersions();
+    return { versions };
+  });
+
+  // Versiones según el motor seleccionado (purpur | fabric | forge | bedrock)
+  app.get<{ Params: { software: string } }>("/versions/:software", async (request) => {
+    const versions = await jarManager.listVersionsFor(request.params.software);
     return { versions };
   });
 
@@ -853,7 +919,14 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
   });
 
   app.post<{ Params: { id: string } }>("/:id/start", async (request, reply) => {
-    return withService(request.params.id, reply, async (service) => service.start());
+    return withService(request.params.id, reply, async (service) => {
+      // Execute asynchronously so the request doesn't timeout if Forge installer takes a long time
+      service.start().catch((e: any) => {
+        console.error(`[Server ${request.params.id}] Async start error: ${e.message}`);
+      });
+      // Return STARTING state immediately
+      return { ...service.getStatus(), state: "STARTING" };
+    });
   });
 
   app.post<{ Params: { id: string } }>("/:id/stop", async (request, reply) => {
@@ -1029,8 +1102,12 @@ export async function registerServerRoutes(app: FastifyInstance): Promise<void> 
     // (purpur ≈ paper para la búsqueda, igual que en la instalación).
     let version = request.query.version;
     let loader = request.query.loader;
-    if (!version && server.version) version = server.version;
-    if (!loader && server.softwareType) {
+
+    if (version === "any") version = undefined;
+    else if (!version && server.version) version = server.version;
+
+    if (loader === "any") loader = undefined;
+    else if (!loader && server.softwareType) {
       loader = server.softwareType === "purpur" ? "paper" : server.softwareType;
     }
 

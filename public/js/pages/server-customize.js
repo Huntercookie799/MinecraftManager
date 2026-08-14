@@ -21,9 +21,28 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (nameInput) (nameInput.querySelector('input') ?? nameInput).value = server.name ?? '';
         const colorInput = document.getElementById('edit-server-color');
         const colorHex = document.getElementById('edit-server-color-hex');
-        if (colorInput && server.color) {
-          colorInput.value = server.color;
-          if (colorHex) colorHex.textContent = server.color;
+        if (colorInput && server.accentColor) {
+          colorInput.value = server.accentColor;
+          if (colorHex) colorHex.textContent = server.accentColor;
+        }
+        const syncS3Input = document.getElementById('edit-sync-s3');
+        if (syncS3Input && server.syncWithS3 !== undefined) {
+          syncS3Input.checked = server.syncWithS3;
+        }
+        const motdTextarea = document.getElementById('edit-server-motd');
+        if (motdTextarea && server.motd) {
+          motdTextarea.value = server.motd;
+        }
+        if (server.avatar) {
+          const avatarPreviewImg = document.getElementById('edit-avatar-preview-img');
+          const avatarPlaceholder = document.getElementById('edit-avatar-placeholder-icon');
+          const btnRemoveAvatar = document.getElementById('btn-remove-avatar');
+          if (avatarPreviewImg) {
+            avatarPreviewImg.src = server.avatar;
+            avatarPreviewImg.style.display = 'block';
+            if (avatarPlaceholder) avatarPlaceholder.style.display = 'none';
+            if (btnRemoveAvatar) btnRemoveAvatar.style.display = 'inline-flex';
+          }
         }
       }
       const badge = document.getElementById('status-badge');

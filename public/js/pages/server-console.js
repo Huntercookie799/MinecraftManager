@@ -248,6 +248,16 @@ document.addEventListener('DOMContentLoaded', async () => {
     loadHistory(1);
   });
 
+  DOM.on('btn-copy-terminal', 'click', () => {
+    const textToCopy = terminalOutput.innerText;
+    navigator.clipboard.writeText(textToCopy).then(() => {
+      window.Toast?.show('Terminal copiada al portapapeles', 'success');
+    }).catch(err => {
+      console.error('Error al copiar terminal:', err);
+      window.Toast?.show('Error al copiar terminal', 'error');
+    });
+  });
+
   const historySearchInput = DOM.get('history-search-input');
   const btnHistorySearch = DOM.get('btn-history-search');
   const chipsContainer = DOM.get('history-search-chips');

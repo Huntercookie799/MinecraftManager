@@ -175,6 +175,10 @@
           </select>
           <ui-button variant="primary" id="btn-execute-modpack-search" style="width:auto; white-space:nowrap;"><i data-lucide="search" style="width:15px;height:15px;"></i> Buscar</ui-button>
         </div>
+        <div style="display:flex; align-items:center; gap:8px;">
+          <input type="checkbox" id="modpack-search-compatible" checked style="accent-color: var(--primary);">
+          <label for="modpack-search-compatible" style="font-size:0.875rem;color:var(--text-main);cursor:pointer;">Mostrar solo modpacks compatibles con mi versión de servidor</label>
+        </div>
         <div id="modpack-search-status" style="display:none;color:var(--text-dim);font-size:0.85rem;"></div>
         <div id="modpack-search-results" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px;overflow-y:auto;max-height:60vh;padding-right:8px;"></div>
       </div>

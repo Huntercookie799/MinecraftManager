@@ -4,7 +4,11 @@ import { config as loadEnv } from "dotenv";
 const repoRoot = path.resolve(__dirname, "../../..");
 
 loadEnv({ path: path.join(repoRoot, ".env") });
-loadEnv({ path: path.resolve(process.cwd(), ".env"), override: false });
+// En desarrollo el .env del proyecto manda (override: true): evita que una
+// variable ambiental residual (p. ej. PORT=0 de otras herramientas) pise la
+// configuración del proyecto. En producción (Render) no existe .env, así que
+// las variables reales del entorno se usan igual.
+loadEnv({ path: path.resolve(process.cwd(), ".env"), override: true });
 
 function numberFromEnv(name: string, fallback: number): number {
   const value = process.env[name];
@@ -44,6 +48,8 @@ export const env = {
   minecraftDir,
   paperJar: resolveFromRepo(process.env.PAPER_JAR, "minecraft/server/paper.jar"),
   javaBin: process.env.JAVA_BIN ?? "java",
+  javaBin17: process.env.JAVA_BIN_17 || undefined,
+  javaBin8: process.env.JAVA_BIN_8 || undefined,
   javaArgs: [
     `-Xms${process.env.JAVA_MIN_MEMORY ?? "1G"}`,
     `-Xmx${process.env.JAVA_MAX_MEMORY ?? "2G"}`,

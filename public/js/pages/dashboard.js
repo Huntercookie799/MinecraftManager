@@ -16,54 +16,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     API.logout();
   });
 
-  const modal = DOM.get('new-server-modal');
-  let versionsLoaded = false;
-
   DOM.on('btn-show-new-server', 'click', async () => {
-    if (!versionsLoaded) {
-      const versionSelect = DOM.get('new-server-version');
-      const data = await API.call('/versions');
-      if (data && Array.isArray(data.versions) && data.versions.length > 0) {
-        versionSelect.innerHTML = data.versions.map(v => `<option value="${v}">${v}</option>`).join('');
-        // Seleccionar la más reciente por defecto
-        versionSelect.value = data.versions[0];
-        versionsLoaded = true;
-      } else {
-        versionSelect.innerHTML = '<option value="1.21.8">1.21.8</option>';
-      }
-    }
-    DOM.show(modal);
+    window.location.href = '/create.html';
   });
-  DOM.on('btn-cancel-new-server', 'click', () => DOM.hide(modal));
 
-  // Estrategia de acceso: al elegir "Personalizado" se muestra el input de puerto
-  const portStrategy = DOM.get('new-server-port-strategy');
-  const customPort = DOM.get('new-server-port');
-  if (portStrategy && customPort) {
-    portStrategy.addEventListener('change', () => {
-      customPort.style.display = portStrategy.value === 'custom' ? 'block' : 'none';
-    });
-  }
-
-  DOM.on('btn-create-server', 'click', async () => {
-    UIProgress.show('Creando servidor...');
-
-    const name = DOM.get('new-server-name').value;
-    const memory = DOM.get('new-server-memory').value;
-    const softwareType = DOM.get('new-server-software').value;
-    const strategy = DOM.get('new-server-port-strategy').value;
-    const port = strategy === 'custom' ? DOM.get('new-server-port').value : strategy;
-    const version = DOM.get('new-server-version').value;
-    const hostname = DOM.get('new-server-hostname')?.value.trim() || undefined;
-
-    const res = await ServerModel.create(name, port, memory, version, hostname, softwareType);
-    
-    UIProgress.hide();
-
-    if (res && res.success) {
-      DOM.hide(modal);
-      loadServers();
-    }
+  DOM.on('btn-show-compatibility', 'click', () => {
+    window.location.href = '/compatibility.html';
   });
 
   await loadServers();

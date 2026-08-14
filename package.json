@@ -11,7 +11,8 @@
     "test": "vitest run",
     "minecraft:download": "node scripts/download-paper.mjs",
     "docker:up": "docker compose up --build",
-    "docker:down": "docker compose down"
+    "docker:down": "docker compose down",
+    "clean-port": "npx kill-port 3000"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1106.0",

@@ -13,8 +13,8 @@ export class WorldModel {
       body.modpackSource = modpack.source;
     }
     const res = await API.call('/', 'POST', body, `/api/server/${serverId}/worlds`);
-    if (!res?.error) window.Toast?.show(`Mundo "${name}" creado exitosamente`, 'success');
-    else window.Toast?.show(res.error, 'error');
+    if (res && !res.error) window.Toast?.show(`Mundo "${name}" creado exitosamente`, 'success');
+    else if (res && res.error) window.Toast?.show(res.error, 'error');
     return res;
   }
 

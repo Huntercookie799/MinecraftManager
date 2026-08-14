@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <script>!function(){var t=localStorage.getItem("mc-theme")||"dark";document.documentElement.dataset.theme=t;document.documentElement.classList.add("no-transition")}();</script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Consultar Compatibilidad - Minecraft Manager</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/js/components/index.js?v=3"></script>
+  <script type="module" src="/js/components/UISidebar.js?v=3"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script type="module" src="/js/components/UIThemeToggle.js?v=3"></script>
+</head>
+<body>
+  <!-- Sidebar Component -->
+  <ui-sidebar type="main" active=""></ui-sidebar>
+
+  <!-- Content -->
+  <div class="content" id="compatibility-view">
+    <div class="header" style="flex-wrap: wrap; gap: 15px; align-items: center; justify-content: space-between;">
+      <div style="display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
+        <ui-button variant="ghost" id="btn-back-dashboard" style="padding: 6px;"><i data-lucide="arrow-left"></i></ui-button>
+        <h2 style="margin: 0;">Consultar Compatibilidad</h2>
+      </div>
+    </div>
+
+    <div class="card" style="max-width: 600px; margin: 0 auto; margin-top: 20px;">
+      <div style="display:flex; gap:10px; margin-bottom:15px; border-bottom: 1px solid var(--border-color); padding-bottom:10px;">
+        <ui-button id="compat-tab-zip" variant="secondary" style="flex:1;">Subir Mundo (.zip)</ui-button>
+        <ui-button id="compat-tab-modpack" variant="ghost" style="flex:1;">Buscar Modpack</ui-button>
+      </div>
+
+      <div id="compat-content-zip">
+        <div class="form-group">
+          <label>Archivo del mundo (.zip):</label>
+          <input type="file" id="compat-file" accept=".zip" style="width:100%; padding:10px; border:1px dashed var(--border-color); border-radius:var(--border-radius); background:var(--bg-panel); color:var(--text-main);">
+        </div>
+      </div>
+
+      <div id="compat-content-modpack" style="display:none;">
+        <div class="form-group" style="display:flex; gap:8px;">
+          <ui-input id="compat-modpack-search-input" placeholder="Ej: Better MC, RLcraft..." style="flex:1;"></ui-input>
+          <ui-button variant="primary" id="btn-execute-compat-modpack-search" style="width:auto;"><i data-lucide="search" style="width:15px;height:15px;"></i></ui-button>
+        </div>
+        <div id="compat-modpack-search-status" style="display:none;color:var(--text-dim);font-size:0.85rem; margin-bottom:10px;"></div>
+        <div id="compat-modpack-search-results" style="display:grid;grid-template-columns:1fr;gap:10px;overflow-y:auto;max-height:200px; margin-bottom:10px;"></div>
+      </div>
+
+      <div class="button-group full-width" style="flex-direction: row; gap: 10px; margin-top: 15px;">
+        <ui-button variant="secondary" id="btn-cancel-compatibility">Cancelar</ui-button>
+        <ui-button variant="primary" id="btn-analyze-compatibility">Analizar Compatibilidad</ui-button>
+      </div>
+
+      <div id="compat-results-area" style="display:none; margin-top:20px; padding-top:15px; border-top:1px solid var(--border-color);">
+        <h4 style="margin:0 0 10px 0; color:var(--text-main);">Resultados del Análisis</h4>
+        <div id="compat-results-info" style="font-family:var(--font-mono); font-size:0.85rem; color:var(--text-main); margin-bottom:15px; padding:10px; background:var(--bg-panel); border-radius:var(--border-radius);"></div>
+        <h5 style="margin:0 0 10px 0; color:var(--text-dim);">Servidores Compatibles:</h5>
+        <div id="compat-matching-servers" style="display:flex; flex-direction:column; gap:8px; margin-bottom:15px;"></div>
+        
+        <ui-button variant="success" id="btn-create-compatible-server" style="width:100%;"><i data-lucide="plus"></i> Crear Nuevo Servidor Compatible</ui-button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="/js/pages/compatibility.js?v=3"></script>
+</body>
+</html>

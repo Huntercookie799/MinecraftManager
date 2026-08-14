@@ -59,6 +59,27 @@
       overflow: hidden;
     }
 
+    .btn-copy-terminal {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: var(--bg-panel, rgba(255, 255, 255, 0.1));
+      border: 1px solid var(--border-color);
+      color: var(--text-dim);
+      border-radius: var(--border-radius, 4px);
+      padding: 6px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+      z-index: 10;
+    }
+    .btn-copy-terminal:hover {
+      background: var(--bg-hover, rgba(255, 255, 255, 0.2));
+      color: var(--text-main);
+    }
+
     /* Terminal output */
     .terminal {
       flex: 1;
@@ -248,6 +269,9 @@
         
         <!-- Terminal Container -->
         <div class="terminal-container" id="terminal-container">
+          <button id="btn-copy-terminal" class="btn-copy-terminal" title="Copiar terminal">
+            <i data-lucide="copy" style="width:16px;height:16px;"></i>
+          </button>
           
           <!-- Output de la terminal -->
           <div id="terminal-output" class="terminal"></div>

@@ -120,19 +120,16 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ─── Actions ───────────────────────────────────────────────────────────────
 
   DOM.on(btnStart, 'click', async () => {
-    UIProgress.show('Iniciando...');
+    btnStart.setAttribute('disabled', 'true');
     await ServerModel.start(serverId);
-    UIProgress.hide();
   });
   DOM.on(btnStop, 'click', async () => {
-    UIProgress.show('Deteniendo...');
+    btnStop.setAttribute('disabled', 'true');
     await ServerModel.stop(serverId);
-    UIProgress.hide();
   });
   DOM.on(btnRestart, 'click', async () => {
-    UIProgress.show('Reiniciando...');
+    btnRestart.setAttribute('disabled', 'true');
     await ServerModel.restart(serverId);
-    UIProgress.hide();
   });
   
   DOM.on(btnDelete, 'click', async () => {

@@ -13,8 +13,8 @@ export class ServerModel {
     if (hostname) body.hostname = hostname;
     if (softwareType) body.softwareType = softwareType;
     const res = await API.call('', 'POST', body);
-    if (!res.error) Toast.show(`Servidor "${name}" creado exitosamente`, 'success');
-    else Toast.show(res.error, 'error');
+    if (res && !res.error) Toast.show(`Servidor "${name}" creado exitosamente`, 'success');
+    else if (res && res.error) Toast.show(res.error, 'error');
     return res;
   }
 
@@ -32,8 +32,8 @@ export class ServerModel {
 
   static async delete(id) {
     const res = await API.call(`/${id}`, 'DELETE');
-    if (!res.error) Toast.show(`Servidor eliminado`, 'success');
-    else Toast.show(res.error, 'error');
+    if (res && !res.error) Toast.show(`Servidor eliminado`, 'success');
+    else if (res && res.error) Toast.show(res.error, 'error');
     return res;
   }
 
@@ -43,22 +43,22 @@ export class ServerModel {
 
   static async start(id) {
     const res = await API.call(`/${id}/start`, 'POST');
-    if (!res.error) Toast.show('Iniciando servidor...', 'info');
-    else Toast.show(res.error, 'error');
+    if (res && !res.error) Toast.show('Iniciando servidor...', 'info');
+    else if (res && res.error) Toast.show(res.error, 'error');
     return res;
   }
 
   static async stop(id) {
     const res = await API.call(`/${id}/stop`, 'POST');
-    if (!res.error) Toast.show('Deteniendo servidor...', 'warning');
-    else Toast.show(res.error, 'error');
+    if (res && !res.error) Toast.show('Deteniendo servidor...', 'warning');
+    else if (res && res.error) Toast.show(res.error, 'error');
     return res;
   }
 
   static async restart(id) {
     const res = await API.call(`/${id}/restart`, 'POST');
-    if (!res.error) Toast.show('Reiniciando servidor...', 'info');
-    else Toast.show(res.error, 'error');
+    if (res && !res.error) Toast.show('Reiniciando servidor...', 'info');
+    else if (res && res.error) Toast.show(res.error, 'error');
     return res;
   }
 

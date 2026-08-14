@@ -162,7 +162,7 @@ async function buildTutorialContent(server: any, world: any, stats: any): Promis
 }
 
 // Ensure extracted ZIPs have a valid 'world' folder structure
-async function sanitizeExtractedWorld(worldPath: string) {
+export async function sanitizeExtractedWorld(worldPath: string) {
   try {
     const items = await fs.readdir(worldPath);
     if (items.includes("world")) return;
@@ -626,6 +626,51 @@ export async function registerWorldsRoutes(app: FastifyInstance): Promise<void> 
 
       const buffer = zip.toBuffer();
       reply.header('Content-Disposition', `attachment; filename="${world.name}.zip"`);
+      reply.type('application/zip');
+      return reply.send(buffer);
+    } catch (err) {
+      app.log.error(err);
+      return reply.code(500).send({ error: "Failed to create ZIP file" });
+    }
+  });
+
+  app.get<{ Params: WorldParams }>("/:id/export-modpack", async (request, reply) => {
+    const server = await getServerContext(request.params.serverId, reply);
+    if (!server) return;
+
+    const worldId = parseInt(request.params.id, 10);
+    if (isNaN(worldId)) return reply.code(400).send({ error: "Invalid ID" });
+
+    const world = await prisma.world.findUnique({ where: { id: worldId } });
+    if (!world || world.serverId !== server.id) return reply.code(404).send({ error: "World not found" });
+
+    const zip = new AdmZip();
+    // Only include mod-related folders
+    const foldersToZip = ["mods", "config", "defaultconfigs", "resourcepacks"];
+    const worldsBackupDir = path.join(server.path, "worlds_backup");
+
+    try {
+      if (world.isActive) {
+        for (const folder of foldersToZip) {
+          const folderPath = path.join(server.path, folder);
+          try {
+            await fs.access(folderPath);
+            zip.addLocalFolder(folderPath, folder);
+          } catch {}
+        }
+      } else {
+        const backupPath = path.join(worldsBackupDir, world.path);
+        for (const folder of foldersToZip) {
+          const folderPath = path.join(backupPath, folder);
+          try {
+            await fs.access(folderPath);
+            zip.addLocalFolder(folderPath, folder);
+          } catch {}
+        }
+      }
+
+      const buffer = zip.toBuffer();
+      reply.header('Content-Disposition', `attachment; filename="Modpack_${world.name}.zip"`);
       reply.type('application/zip');
       return reply.send(buffer);
     } catch (err) {

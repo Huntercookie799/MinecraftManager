@@ -9,8 +9,16 @@
  * arranque crasheaba con `BindException: Address already in use`.
  */
 export function applyServerPort(content: string, port: number): string {
-  if (/^server-port=/m.test(content)) {
-    return content.replace(/^server-port=\d+/m, `server-port=${port}`);
+  let newContent = content;
+  if (/^server-port=/m.test(newContent)) {
+    newContent = newContent.replace(/^server-port=\d+/m, `server-port=${port}`);
+  } else {
+    newContent = `${newContent}\nserver-port=${port}\n`;
   }
-  return `${content}\nserver-port=${port}\n`;
+  
+  if (/^server-portv6=/m.test(newContent)) {
+    newContent = newContent.replace(/^server-portv6=\d+/m, `server-portv6=${port}`);
+  }
+  
+  return newContent;
 }
